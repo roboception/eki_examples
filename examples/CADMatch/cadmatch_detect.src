@@ -4,30 +4,30 @@
 &PARAM TEMPLATE = C:\KRC\Roboter\Template\vorgabe
 &PARAM DISKPATH = KRC:\R1\Program
 DEF cadmatch_detect( )
-   
+
    DECL CHAR serviceName[32]
    DECL EKI_Status RET
    DECL FRAME CADMatchingPose
-   
+
    ;FOLD INI;%{PE}
       ;FOLD BASISTECH INI
          GLOBAL INTERRUPT DECL 3 WHEN $STOPMESS==TRUE DO IR_STOPM ( )
-         INTERRUPT ON 3 
+         INTERRUPT ON 3
          BAS (#INITMOV,0 )
       ;ENDFOLD (BASISTECH INI)
       ;FOLD USER INI
          ;Make your modifications here
-         
+
       ;ENDFOLD (USER INI)
    ;ENDFOLD (INI)
-   
+
    INTERRUPT DECL 89 WHEN $FLAG[998] DO RC_NOTIFYRECEIVED(1, 998)
    INTERRUPT ON 89
-   
+
    ;FOLD SPTP HOME Vel=100 % DEFAULT;%{PE}%MKUKATPBASIS,%CSPLINE,%VSPTP_SB,%P 1:SPTP_SB, 2:HOME, 3:, 5:100, 7:DEFAULT
       SPTP XHOME WITH $VEL_AXIS[1]= SVEL_JOINT( 100), $TOOL= STOOL2( FHOME), $BASE= SBASE( FHOME.BASE_NO),$IPO_MODE= SIPO_MODE( FHOME.IPO_FRAME), $LOAD= SLOAD( FHOME.TOOL_NO), $ACC_AXIS[1]= SACC_JOINT( PDEFAULT), $GEAR_JERK[1]= SGEAR_JERK( PDEFAULT)
    ;ENDFOLD
-   
+
    ; Init cadmatch module and open connection to rc_cube
    RC_START()
    $FLAG[1] = FALSE
@@ -35,39 +35,39 @@ DEF cadmatch_detect( )
    serviceName[] = "rc_cadmatch-detect_object"
    RC_INIT(serviceName[])
    RC_OPENCONNECTION(serviceName[])
-   
+
    LOOP
-      
+
       ; Reset vision results
       WAIT SEC 0
-      ResetDetectedItems()     
-      
+      ResetDetectedItems()
+
       ;****************************************
       ; Mandatory application parameters:
-      ; Template ID (Part) [Default: "Template_1"] 
-      ; Load Carrier ID (Box) [Default: "LoadCarrier_1"] 
+      ; Template ID (Part) [Default: "Template_1"]
+      ; Load Carrier ID (Box) [Default: "LoadCarrier_1"]
       ; Region of Interest ID [Default: "RegionOfInterest_1"]
       ; Gripper ID [Default: "Gripper_1"]
       ; Offset pre Pick for collision detection [Default: X 0.0, Y 0.0, Z -0.5]
       ; Pose Frame, sensor or robot (external) [Default: "external"]
       ;****************************************
-      
+
       RET = EKI_SetString(serviceName[], "req/args/template_id", "Template_1")
       RET = EKI_SetString(serviceName[], "req/args/load_carrier_id", "LoadCarrier_1")
       RET = EKI_SetString(serviceName[], "req/args/region_of_interest_id", "RegionOfInterest_1")
       RET = EKI_SetString(serviceName[], "req/args/collision_detection/@gripper_id", "Gripper_1")
       RET = EKI_SetReal(serviceName[], "req/args/collision_detection/pre_grasp_offset/@x", 0.0)
       RET = EKI_SetReal(serviceName[], "req/args/collision_detection/pre_grasp_offset/@y", 0.0)
-      RET = EKI_SetReal(serviceName[], "req/args/collision_detection/pre_grasp_offset/@z", -0.5)  
+      RET = EKI_SetReal(serviceName[], "req/args/collision_detection/pre_grasp_offset/@z", -0.5)
       RET = EKI_SetString(serviceName[], "req/args/pose_frame", "external")
-      
+
       ;****************************************
       ; Optional application parameters:
       ; LC Box, if load carrier should be configured externally [Default: X 0.0, Y 0.0, Z 0.0]
       ; LC Pose, if load carrier should be configured externally [Default: X 0.0, Y 0.0, Z 0.0, A 0.0, B 0.0, C 0.0]
       ; Robot Pose, only relevant for robot mounted sensor [Default: X 0.0, Y 0.0, Z 0.0, A 0.0, B 0.0, C 0.0]
       ;****************************************
-      
+
       ;RET = EKI_SetReal(serviceName[], "req/args/load_carrier_compartment/box/@x ", 0.0)
       ;RET = EKI_SetReal(serviceName[], "req/args/load_carrier_compartment/box/@y ", 0.0)
       ;RET = EKI_SetReal(serviceName[], "req/args/load_carrier_compartment/box/@z ", 0.0)
@@ -82,29 +82,29 @@ DEF cadmatch_detect( )
       ;RET = EKI_SetReal(serviceName[], "req/args/robot_pose/@Z", 0.0)
       ;RET = EKI_SetReal(serviceName[], "req/args/robot_pose/@A", 0.0)
       ;RET = EKI_SetReal(serviceName[], "req/args/robot_pose/@B", 0.0)
-      ;RET = EKI_SetReal(serviceName[], "req/args/robot_pose/@C", 0.0) 
-      
+      ;RET = EKI_SetReal(serviceName[], "req/args/robot_pose/@C", 0.0)
+
       ; Send trigger and wait for vision results
       RET = EKI_Send(serviceName[], "req")
       RC_WAITFORRESULT(1)
       RC_READRESULT(serviceName[])
-      
+
       ; Error handling
       IF(RETURNCODE.VALUE < 0) OR  THEN
          RC_SETMSG("Execution failed")
          HALT
       ENDIF
-      
+
       ; No CAD matching result found
       IF NOT(CheckDetectedItem(1)) THEN
          MsgQuit("No CAD matchin vision result found","RC")
          HALT
       ENDIF
-      
+
       ;Calculate Pick Position on first detected part
       CADMatchingPose=DETECTEDITEMS[1]
       xP1 = CADMatchingPose
-      
+
       ; Pre Pick Position
       ;FOLD SPTP P2 CONT Vel=100 % PDAT4 Tool[2]:Magnet Base[0] ;%{PE}
          ;FOLD Parameters ;%{h}
@@ -112,7 +112,7 @@ DEF cadmatch_detect( )
          ;ENDFOLD
          SPTP XP2 WITH $VEL_AXIS[1] = SVEL_JOINT(100.0), $TOOL = STOOL2(FP2), $BASE = SBASE(FP2.BASE_NO), $IPO_MODE = SIPO_MODE(FP2.IPO_FRAME), $LOAD = SLOAD(FP2.TOOL_NO), $ACC_AXIS[1] = SACC_JOINT(PPDAT4), $APO = SAPO_PTP(PPDAT4), $GEAR_JERK[1] = SGEAR_JERK(PPDAT4), $COLLMON_TOL_PRO[1] = USE_CM_PRO_VALUES(0) C_Spl
       ;ENDFOLD
-      
+
       ; Pick Position
       ;FOLD LIN P1 Vel=0.2 m/s CPDAT1 Tool[2]:Magnet Base[0] ;%{PE}
          ;FOLD Parameters ;%{h}
@@ -125,8 +125,8 @@ DEF cadmatch_detect( )
          SET_CD_PARAMS (0)
          LIN XP1
       ;ENDFOLD
-      
-      ; Post Pick Position     
+
+      ; Post Pick Position
       ;FOLD LIN P2 CONT Vel=2 m/s CPDAT3 Tool[2]:Magnet Base[0] ;%{PE}
          ;FOLD Parameters ;%{h}
             ;Params IlfProvider=kukaroboter.basistech.inlineforms.movement.old; Kuka.IsGlobalPoint=False; Kuka.PointName=P2; Kuka.BlendingEnabled=True; Kuka.MoveDataName=CPDAT3; Kuka.VelocityPath=2; Kuka.CurrentCDSetIndex=0; Kuka.MovementParameterFieldEnabled=True; IlfCommand=LIN
@@ -138,9 +138,9 @@ DEF cadmatch_detect( )
          SET_CD_PARAMS (0)
          LIN XP2 C_Dis C_Dis
       ;ENDFOLD
-      
+
       RC_SETMSG("Finish")
-      
+
       ; Place Position
       ;FOLD SPTP P3 Vel=100 % PDAT3 Tool[2] Base[0] ;%{PE}
          ;FOLD Parameters ;%{h}
@@ -148,16 +148,16 @@ DEF cadmatch_detect( )
          ;ENDFOLD
          SPTP XP3 WITH $VEL_AXIS[1] = SVEL_JOINT(100.0), $TOOL = STOOL2(FP3), $BASE = SBASE(FP3.BASE_NO), $IPO_MODE = SIPO_MODE(FP3.IPO_FRAME), $LOAD = SLOAD(FP3.TOOL_NO), $ACC_AXIS[1] = SACC_JOINT(PPDAT3), $APO = SAPO_PTP(PPDAT3), $GEAR_JERK[1] = SGEAR_JERK(PPDAT3), $COLLMON_TOL_PRO[1] = USE_CM_PRO_VALUES(0)
       ;ENDFOLD
-      
+
       ;FOLD SPTP HOME Vel=100 % DEFAULT;%{PE}%MKUKATPBASIS,%CSPLINE,%VSPTP_SB,%P 1:SPTP_SB, 2:HOME, 3:, 5:100, 7:DEFAULT
          SPTP XHOME WITH $VEL_AXIS[1]= SVEL_JOINT( 100), $TOOL= STOOL2( FHOME), $BASE= SBASE( FHOME.BASE_NO),$IPO_MODE= SIPO_MODE( FHOME.IPO_FRAME), $LOAD= SLOAD( FHOME.TOOL_NO), $ACC_AXIS[1]= SACC_JOINT( PDEFAULT), $GEAR_JERK[1]= SGEAR_JERK( PDEFAULT)
       ;ENDFOLD
-      
+
    ENDLOOP
-   
+
    RC_STOP()
    RC_CLOSECONNECTION(serviceName[])
-   
+
 END
 
 ;FOLD RC_SETMSG
@@ -166,7 +166,7 @@ END
       DECL KrlMsgPar_T params[3]
       RC_SETMSG_PARAM(msg[], params[])
    END
-   
+
 ;ENDFOLD (RC_SETMSG)
 
 ;FOLD RC_SETMSG_PARAM
@@ -180,7 +180,6 @@ END
       DECL EKrlMsgType Type
 
       name={modul[] "RC", nr 1, msg_txt[] " "}
-
       Type=#notify
 
       len=STRLEN(msg[])
@@ -198,8 +197,6 @@ END
       Handle=Set_KrlMsg(Type, name, params[], options)
    END
 ;ENDFOLD (RC_SETMSG_PARAM)
-   
-;ENDFOLD (RC_SETMSG_PARAM)
 
 ;FOLD RC_INIT
    DEF RC_INIT(configFileName[]:IN)
@@ -207,7 +204,7 @@ END
       DECL EKI_Status RET
       RET=EKI_INIT(configFileName[])
    END
-   
+
 ;ENDFOLD (RC_INIT)
 
 ;FOLD RC_OPENCONNECTION
@@ -217,7 +214,7 @@ END
       RET=EKI_Open(configFileName[])
       EKI_CHECK(RET,#Quit)
    END
-   
+
 ;ENDFOLD (RC_OPENCONNECTION)
 
 ;FOLD RC_CLOSECONNECTION
@@ -227,25 +224,25 @@ END
       WAIT SEC 0
       RET=EKI_Close(configFileName[])
    END
-   
+
 ;ENDFOLD (RC_CLOSECONNECTION)
 
 ;FOLD RC_WAITFORRESULT
    DEF RC_WAITFORRESULT(WaitFlag:IN)
       DECL INT WaitFlag
-      
+
       WAIT FOR $FLAG[WaitFlag] OR NOT $FLAG[RCEkiAliveFlagNo]
-      
-      ;Eki-connection has been closed 
-      
+
+      ;Eki-connection has been closed
+
       IF(NOT $FLAG[RCEkiAliveFlagNo]) THEN
          RC_SETMSG("EKI connection lost")
       ENDIF
-      
+
       $FLAG[WaitFlag] = FALSE
       WAIT SEC 0
    END
-   
+
 ;ENDFOLD (RC_WAITFORRESULT)
 
 ;FOLD RC_NOTIFYRECEIVED
@@ -255,7 +252,7 @@ END
       $FLAG[EOFRESULFLAG]=FALSE
       $FLAG[WAITFLAG]=TRUE
    END
-   
+
 ;ENDFOLD (RC_NOTIFYRECEIVED)
 
 ;FOLD RC_READRESULT
@@ -265,105 +262,105 @@ END
       DECL EKI_STATUS RET
       DECL INT j
       DECL FRAME POSE
-      
+
       POSE = POSE_IDENT
-      
+
       RESULT={VALUE 0, MSG[] "0"}
-      
+
       ;Standard Kommunikation fuer Fehlercode
       RET = EKI_GetInt(configFileName[], "res/return_code/@value", RESULT.VALUE)
       RET = EKI_GetString(configFileName[], "res/return_code/@message", RESULT.MSG[])
       RETURNCODE = RESULT
-      
+
       ;Kopieren der Anzahl an Greifpositionen
       RET = EKI_CheckBuffer(configFileName[], "res/grasps/le/id")
       NUMDETECTEDITEMS = RET.Buff
-      
+
       ;Kopieren aller Greifpositionen
       for j=1 to NUMDETECTEDITEMS
-         
+
          RET = EKI_GetFrame(configFileName[], "res/grasps/le/pose", POSE)
          DETECTEDITEMS[j] = POSE
-         
+
       endfor
-      
+
       RET = EKI_ClearBuffer(configFileName[], "res")
    END
-   
+
 ;ENDFOLD (RC_READRESULT)
 
 ;FOLD RC_START
    DEF RC_START()
-      
+
       DECL CHAR serviceName[32]
       DECL EKI_Status RET
-      
+
       ; Init
       $FLAG[1] = FALSE
       RC_SETMSG("Start")
       serviceName[] = "rc_cadmatch-start"
-      
+
       ; Open connection
       RC_INIT(serviceName[])
       RC_OPENCONNECTION(serviceName[])
-      
+
       ; Trigger vision
       RET = EKI_Send(serviceName[], "req")
-      
+
       ; Wait for vision result
       RC_WAITFORRESULT(1)
-      
+
       ; Close connection
       RC_CLOSECONNECTION(serviceName[])
-      
+
    END
-   
+
 ;ENDFOLD (RC_START)
 
 ;FOLD RC_STOP
    DEF RC_STOP()
-      
+
       DECL CHAR serviceName[32]
       DECL EKI_Status RET
-      
+
       ; Init
       $FLAG[1] = FALSE
       RC_SETMSG("Stop")
       serviceName[] = "rc_cadmatch-stop"
-      
+
       ; Open connection
       RC_INIT(serviceName[])
       RC_OPENCONNECTION(serviceName[])
-      
+
       ; Trigger vision
       RET = EKI_Send(serviceName[], "req")
-      
+
       ; Wait for vision result
       RC_WAITFORRESULT(1)
-      
+
       ; Close connection
       RC_CLOSECONNECTION(serviceName[])
-      
+
    END
-   
+
 ;ENDFOLD (RC_STOP)
 
 ;FOLD (ResetDetectedItems)
    DEF ResetDetectedItems()
       DECL INT I
-      
+
       FOR I = 1 TO 32 STEP 1
          DETECTEDITEMS[I]=$NULLFRAME
       ENDFOR
    END
-   
+
 ;ENDFOLD (ResetDetectedItems)
 
 ;FOLD CheckDetectedItem
    DEFFCT BOOL CheckDetectedItem(Index:IN)
       DECL INT Index
       DECL KrlMsgPar_T par[3]
-      
+
       IF (DETECTEDITEMS[Index].X == 0) AND (DETECTEDITEMS[Index].Y == 0) AND (DETECTEDITEMS[Index].Z == 0) AND (DETECTEDITEMS[Index].A == 0) AND (DETECTEDITEMS[Index].B == 0) AND (DETECTEDITEMS[Index].C ==0) THEN
          RETURN FALSE
       ELSE
@@ -377,7 +374,7 @@ END
          RC_SETMSG_PARAM("CAD Matching Pose: X: %1, Y: %2, Z: %3", par[])
          RETURN TRUE
       ENDIF
-      
+
    ENDFCT
-   
+
 ;ENDFOLD (CheckDetectedItem)
