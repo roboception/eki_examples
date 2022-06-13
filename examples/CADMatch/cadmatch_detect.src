@@ -92,7 +92,7 @@ DEF cadmatch_detect( )
       ; Error handling
       IF (RETURNCODE.VALUE < 0) THEN
          RC_SETMSG("Execution failed")
-         RC_SETMSG(RESULT.MSG[])
+         RC_SETMSG(RETURNCODE.MSG[])
          HALT
       ENDIF
 
