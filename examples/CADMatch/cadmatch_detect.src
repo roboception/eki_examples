@@ -90,8 +90,9 @@ DEF cadmatch_detect( )
       RC_READRESULT(serviceName[])
 
       ; Error handling
-      IF(RETURNCODE.VALUE < 0) OR  THEN
+      IF (RETURNCODE.VALUE < 0) THEN
          RC_SETMSG("Execution failed")
+         RC_SETMSG(RESULT.MSG[])
          HALT
       ENDIF
 
