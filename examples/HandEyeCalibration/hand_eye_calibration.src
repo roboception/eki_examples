@@ -1,5 +1,5 @@
 &ACCESS RVO
-DEF  HandEyeCalibration ( )
+DEF hand_eye_calibration( )
    
    ;FOLD INI;%{PE}
       ;FOLD BASISTECH INI

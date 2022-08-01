@@ -1,4 +1,4 @@
-&ACCESS RVP
+&ACCESS RVO
 &REL 116
 &PARAM EDITMASK = *
 &PARAM TEMPLATE = C:\KRC\Roboter\Template\vorgabe
@@ -44,30 +44,32 @@ DEF cadmatch_detect( )
 
       ;****************************************
       ; Mandatory application parameters:
+      ; ---------------------------------
       ; Template ID (Part) [Default: "Template_1"]
-      ; Load Carrier ID (Box) [Default: "LoadCarrier_1"]
-      ; Region of Interest ID [Default: "RegionOfInterest_1"]
-      ; Gripper ID [Default: "Gripper_1"]
-      ; Offset pre Pick for collision detection [Default: X 0.0, Y 0.0, Z -0.5]
       ; Pose Frame, sensor or robot (external) [Default: "external"]
       ;****************************************
 
       RET = EKI_SetString(serviceName[], "req/args/template_id", "Template_1")
+      RET = EKI_SetString(serviceName[], "req/args/pose_frame", "external")
+
+      ;****************************************
+      ; Optional application parameters:
+      ; --------------------------------
+      ; Load Carrier ID (Box) [Default: "LoadCarrier_1"]
+      ; Region of Interest ID [Default: "RegionOfInterest_1"]
+      ; Gripper ID [Default: "Gripper_1"]
+      ; Offset pre Pick for collision detection [Default: X 0.0, Y 0.0, Z -0.5]
+      ; LC Box, if load carrier should be configured externally [Default: X 0.0, Y 0.0, Z 0.0]
+      ; LC Pose, if load carrier should be configured externally [Default: X 0.0, Y 0.0, Z 0.0, A 0.0, B 0.0, C 0.0]
+      ; Robot Pose, only relevant for robot mounted sensor [Default: X 0.0, Y 0.0, Z 0.0, A 0.0, B 0.0, C 0.0]
+      ;****************************************
+
       RET = EKI_SetString(serviceName[], "req/args/load_carrier_id", "LoadCarrier_1")
       RET = EKI_SetString(serviceName[], "req/args/region_of_interest_id", "RegionOfInterest_1")
       RET = EKI_SetString(serviceName[], "req/args/collision_detection/@gripper_id", "Gripper_1")
       RET = EKI_SetReal(serviceName[], "req/args/collision_detection/pre_grasp_offset/@x", 0.0)
       RET = EKI_SetReal(serviceName[], "req/args/collision_detection/pre_grasp_offset/@y", 0.0)
       RET = EKI_SetReal(serviceName[], "req/args/collision_detection/pre_grasp_offset/@z", -0.5)
-      RET = EKI_SetString(serviceName[], "req/args/pose_frame", "external")
-
-      ;****************************************
-      ; Optional application parameters:
-      ; LC Box, if load carrier should be configured externally [Default: X 0.0, Y 0.0, Z 0.0]
-      ; LC Pose, if load carrier should be configured externally [Default: X 0.0, Y 0.0, Z 0.0, A 0.0, B 0.0, C 0.0]
-      ; Robot Pose, only relevant for robot mounted sensor [Default: X 0.0, Y 0.0, Z 0.0, A 0.0, B 0.0, C 0.0]
-      ;****************************************
-
       ;RET = EKI_SetReal(serviceName[], "req/args/load_carrier_compartment/box/@x ", 0.0)
       ;RET = EKI_SetReal(serviceName[], "req/args/load_carrier_compartment/box/@y ", 0.0)
       ;RET = EKI_SetReal(serviceName[], "req/args/load_carrier_compartment/box/@z ", 0.0)
@@ -102,11 +104,11 @@ DEF cadmatch_detect( )
          HALT
       ENDIF
 
-      ;Calculate Pick Position on first detected part
+      ;Calculate pick position on first detected part
       CADMatchingPose=DETECTEDITEMS[1]
       xP1 = CADMatchingPose
 
-      ; Pre Pick Position
+      ; Pre pick position
       ;FOLD SPTP P2 CONT Vel=100 % PDAT4 Tool[2]:Magnet Base[0] ;%{PE}
          ;FOLD Parameters ;%{h}
             ;Params IlfProvider=kukaroboter.basistech.inlineforms.movement.spline; Kuka.IsGlobalPoint=False; Kuka.PointName=P2; Kuka.BlendingEnabled=True; Kuka.MoveDataPtpName=PDAT4; Kuka.VelocityPtp=100; Kuka.VelocityFieldEnabled=True; Kuka.ColDetectFieldEnabled=True; Kuka.CurrentCDSetIndex=0; Kuka.MovementParameterFieldEnabled=True; IlfCommand=SPTP
@@ -114,7 +116,7 @@ DEF cadmatch_detect( )
          SPTP XP2 WITH $VEL_AXIS[1] = SVEL_JOINT(100.0), $TOOL = STOOL2(FP2), $BASE = SBASE(FP2.BASE_NO), $IPO_MODE = SIPO_MODE(FP2.IPO_FRAME), $LOAD = SLOAD(FP2.TOOL_NO), $ACC_AXIS[1] = SACC_JOINT(PPDAT4), $APO = SAPO_PTP(PPDAT4), $GEAR_JERK[1] = SGEAR_JERK(PPDAT4), $COLLMON_TOL_PRO[1] = USE_CM_PRO_VALUES(0) C_Spl
       ;ENDFOLD
 
-      ; Pick Position
+      ; Pick position
       ;FOLD LIN P1 Vel=0.2 m/s CPDAT1 Tool[2]:Magnet Base[0] ;%{PE}
          ;FOLD Parameters ;%{h}
             ;Params IlfProvider=kukaroboter.basistech.inlineforms.movement.old; Kuka.IsGlobalPoint=False; Kuka.PointName=P1; Kuka.BlendingEnabled=False; Kuka.MoveDataName=CPDAT1; Kuka.VelocityPath=0.2; Kuka.CurrentCDSetIndex=0; Kuka.MovementParameterFieldEnabled=True; IlfCommand=LIN
@@ -127,7 +129,7 @@ DEF cadmatch_detect( )
          LIN XP1
       ;ENDFOLD
 
-      ; Post Pick Position
+      ; Post pick position
       ;FOLD LIN P2 CONT Vel=2 m/s CPDAT3 Tool[2]:Magnet Base[0] ;%{PE}
          ;FOLD Parameters ;%{h}
             ;Params IlfProvider=kukaroboter.basistech.inlineforms.movement.old; Kuka.IsGlobalPoint=False; Kuka.PointName=P2; Kuka.BlendingEnabled=True; Kuka.MoveDataName=CPDAT3; Kuka.VelocityPath=2; Kuka.CurrentCDSetIndex=0; Kuka.MovementParameterFieldEnabled=True; IlfCommand=LIN
@@ -142,7 +144,7 @@ DEF cadmatch_detect( )
 
       RC_SETMSG("Finish")
 
-      ; Place Position
+      ; Place position
       ;FOLD SPTP P3 Vel=100 % PDAT3 Tool[2] Base[0] ;%{PE}
          ;FOLD Parameters ;%{h}
             ;Params IlfProvider=kukaroboter.basistech.inlineforms.movement.spline; Kuka.IsGlobalPoint=False; Kuka.PointName=P3; Kuka.BlendingEnabled=False; Kuka.MoveDataPtpName=PDAT3; Kuka.VelocityPtp=100; Kuka.VelocityFieldEnabled=True; Kuka.ColDetectFieldEnabled=True; Kuka.CurrentCDSetIndex=0; Kuka.MovementParameterFieldEnabled=True; IlfCommand=SPTP
@@ -157,7 +159,7 @@ DEF cadmatch_detect( )
    ENDLOOP
 
    RC_STOP()
-   RC_CLOSECONNECTION(serviceName[])
+   RC_CLOSECONNECTION(serviceName[], "req")
 
 END
 
@@ -219,11 +221,13 @@ END
 ;ENDFOLD (RC_OPENCONNECTION)
 
 ;FOLD RC_CLOSECONNECTION
-   DEF RC_CLOSECONNECTION(configFileName[]:IN)
+   DEF RC_CLOSECONNECTION(configFileName[]:IN, strPlace[]:IN)
       DECL CHAR configFileName[]
+      DECL CHAR strPlace[]
       DECL EKI_Status RET
       WAIT SEC 0
       RET=EKI_Close(configFileName[])
+      RET = EKI_ClearBuffer(configFileName[], strPlace[])
    END
 
 ;ENDFOLD (RC_CLOSECONNECTION)
@@ -312,7 +316,7 @@ END
       RC_WAITFORRESULT(1)
 
       ; Close connection
-      RC_CLOSECONNECTION(serviceName[])
+      RC_CLOSECONNECTION(serviceName[], "req")
 
    END
 
@@ -340,7 +344,7 @@ END
       RC_WAITFORRESULT(1)
 
       ; Close connection
-      RC_CLOSECONNECTION(serviceName[])
+      RC_CLOSECONNECTION(serviceName[], "req")
 
    END
 
