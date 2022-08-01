@@ -48,7 +48,6 @@ DEF cadmatch_detect( )
       ; Template ID (Part) [Default: "Template_1"]
       ; Pose Frame, sensor or robot (external) [Default: "external"]
       ;****************************************
-
       RET = EKI_SetString(serviceName[], "req/args/template_id", "Template_1")
       RET = EKI_SetString(serviceName[], "req/args/pose_frame", "external")
 
@@ -63,7 +62,6 @@ DEF cadmatch_detect( )
       ; LC Pose, if load carrier should be configured externally [Default: X 0.0, Y 0.0, Z 0.0, A 0.0, B 0.0, C 0.0]
       ; Robot Pose, only relevant for robot mounted sensor [Default: X 0.0, Y 0.0, Z 0.0, A 0.0, B 0.0, C 0.0]
       ;****************************************
-
       RET = EKI_SetString(serviceName[], "req/args/load_carrier_id", "LoadCarrier_1")
       RET = EKI_SetString(serviceName[], "req/args/region_of_interest_id", "RegionOfInterest_1")
       RET = EKI_SetString(serviceName[], "req/args/collision_detection/@gripper_id", "Gripper_1")
@@ -173,32 +171,33 @@ END
 ;ENDFOLD (RC_SETMSG)
 
 ;FOLD RC_SETMSG_PARAM
-   DEF RC_SETMSG_PARAM(msg[]:IN, params:OUT)
-      DECL CHAR msg[]
-      DECL KrlMsgPar_T params[]
+DEF RC_SETMSG_PARAM(msg[]:IN, params:OUT)
+  DECL CHAR msg[]
+  DECL KrlMsgPar_T params[]
 
-      DECL KrlMsg_T name
-      DECL KrlMsgOpt_T options
-      DECL INT Handle, len, count
-      DECL EKrlMsgType Type
+  DECL KrlMsg_T name
+  DECL KrlMsgOpt_T options
+  DECL INT Handle, len, count
+  DECL EKrlMsgType Type
 
-      name={modul[] "RC", nr 1, msg_txt[] " "}
-      Type=#notify
+  name={modul[] "RC", nr 1, msg_txt[] " "}
 
-      len=STRLEN(msg[])
-      IF len>0 THEN
-         IF len>80 THEN
-            len=80
-         ENDIF
-         FOR count=1 TO len
-            name.msg_txt[count]=msg[count]
-         ENDFOR
-      ELSE
-         name.msg_txt[]="parameter msg[] is missing"
-      ENDIF
+  Type=#notify
 
-      Handle=Set_KrlMsg(Type, name, params[], options)
-   END
+  len=STRLEN(msg[])
+  IF len>0 THEN
+    IF len>80 THEN
+      len=80
+    ENDIF
+    FOR count=1 TO len
+      name.msg_txt[count]=msg[count]
+    ENDFOR
+  ELSE
+    name.msg_txt[]="parameter msg[] is missing"
+  ENDIF
+
+  Handle=Set_KrlMsg(Type, name, params[], options)
+END
 ;ENDFOLD (RC_SETMSG_PARAM)
 
 ;FOLD RC_INIT
@@ -227,9 +226,8 @@ END
       DECL EKI_Status RET
       WAIT SEC 0
       RET=EKI_Close(configFileName[])
-      RET = EKI_ClearBuffer(configFileName[], strPlace[])
+      RET=EKI_ClearBuffer(configFileName[], strPlace[])
    END
-
 ;ENDFOLD (RC_CLOSECONNECTION)
 
 ;FOLD RC_WAITFORRESULT

@@ -97,33 +97,33 @@ END
 ;ENDFOLD (RC_SETMSG)
 
 ;FOLD RC_SETMSG_PARAM
-   DEF RC_SETMSG_PARAM(msg[]:IN, params:OUT)
-      DECL CHAR msg[]
-      DECL KrlMsgPar_T params[]
+DEF RC_SETMSG_PARAM(msg[]:IN, params:OUT)
+  DECL CHAR msg[]
+  DECL KrlMsgPar_T params[]
 
-      DECL KrlMsg_T name
-      DECL KrlMsgOpt_T options
-      DECL INT Handle, len, count
-      DECL EKrlMsgType Type
+  DECL KrlMsg_T name
+  DECL KrlMsgOpt_T options
+  DECL INT Handle, len, count
+  DECL EKrlMsgType Type
 
-      name={modul[] "RC", nr 1, msg_txt[] " "}
+  name={modul[] "RC", nr 1, msg_txt[] " "}
 
-      Type=#notify
+  Type=#notify
 
-      len=STRLEN(msg[])
-      IF len>0 THEN
-         IF len>80 THEN
-            len=80
-         ENDIF
-         FOR count=1 TO len
-            name.msg_txt[count]=msg[count]
-         ENDFOR
-      ELSE
-         name.msg_txt[]="parameter msg[] is missing"
-      ENDIF
+  len=STRLEN(msg[])
+  IF len>0 THEN
+    IF len>80 THEN
+      len=80
+    ENDIF
+    FOR count=1 TO len
+      name.msg_txt[count]=msg[count]
+    ENDFOR
+  ELSE
+    name.msg_txt[]="parameter msg[] is missing"
+  ENDIF
 
-      Handle=Set_KrlMsg(Type, name, params[], options)
-   END
+  Handle=Set_KrlMsg(Type, name, params[], options)
+END
 ;ENDFOLD (RC_SETMSG_PARAM)
 
 ;FOLD RC_INIT
@@ -144,11 +144,13 @@ END
 ;ENDFOLD (RC_OPENCONNECTION)
 
 ;FOLD RC_CLOSECONNECTION
-DEF RC_CLOSECONNECTION(configFileName[]:IN)
+DEF RC_CLOSECONNECTION(configFileName[]:IN, strPlace[]:IN)
   DECL CHAR configFileName[]
+  DECL CHAR strPlace[]
   DECL EKI_Status RET
   WAIT SEC 0
   RET=EKI_Close(configFileName[])
+  RET=EKI_ClearBuffer(configFileName[], strPlace[])
 END
 ;ENDFOLD (RC_CLOSECONNECTION)
 
@@ -159,8 +161,6 @@ DEF RC_WAITFORRESULT(WaitFlag:IN)
   WAIT FOR $FLAG[WaitFlag] OR NOT $FLAG[RCEkiAliveFlagNo]
 
   ;Eki-connection has been closed 
-
-
   IF(NOT $FLAG[RCEkiAliveFlagNo]) THEN
     RC_SETMSG("EKI connection lost")
   ENDIF
