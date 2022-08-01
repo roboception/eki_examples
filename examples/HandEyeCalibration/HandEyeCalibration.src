@@ -265,7 +265,7 @@ END
          RC_SETMSG("Execution failed")
          RC_SETMSG(RESULT.MSG[])
       ENDIF
-      RC_CLOSECONNECTION(serviceName[])
+      RC_CLOSECONNECTION(serviceName[], "req")
    END
 ;ENDFOLD(RC_HEC_RESETCALIBRATION)
    
@@ -287,7 +287,7 @@ END
       
       RET = EKI_Send(serviceName[], "req")
       RC_WAITFORRESULT(1)
-      RC_CLOSECONNECTION(serviceName[])
+      RC_CLOSECONNECTION(serviceName[], "req")
          
    END
 ;ENDFOLD(RC_HEC_SETPARAMETERS)
@@ -334,13 +334,12 @@ END
       RET = EKI_GetString(serviceName[], "res/return_code/@message", RESULT.MSG[])
       
       IF(success) THEN
-         RC_SETMSG("Set pose")
-         RC_CLOSECONNECTION(serviceName[])
+         RC_SETMSG("Set pose")         
       ELSE
          RC_SETERRORMSG("Set pose failed")
          RC_SETERRORMSG(nodeMessage[])
-         RC_CLOSECONNECTION(serviceName[])
       ENDIF
+      RC_CLOSECONNECTION(serviceName[], "req")
       
    END
 ;ENDFOLD(RC_HEC_SETCURRENTPOSE)
@@ -359,8 +358,6 @@ END
       
       RC_OPENCONNECTION(serviceName[])
       
-      RC_OPENCONNECTION("rc_hand_eye_calibration-save_calibration")
-      
       RET = EKI_Send(serviceName[], "req")
       RC_WAITFORRESULT(1)
       
@@ -373,7 +370,9 @@ END
       RET = EKI_GetBool(serviceName[], "res/success", success)
       RET = EKI_GetString(serviceName[], "res/message", resMessage[])
       RET = EKI_GetReal(serviceName[], "res/error", calibrationError)
-      
+
+      RC_CLOSECONNECTION(serviceName[], "req")
+
       IF(success) THEN
          RC_SETMSG("Calibration successful.")
          
@@ -382,6 +381,7 @@ END
          RC_SETMSG_PARAM("Calibration error: %1", par[])
          
          serviceName[] = "rc_hand_eye_calibration-save_calibration"
+         RC_OPENCONNECTION(serviceName[])
          
          RET = EKI_Send(serviceName[], "req")
          RC_WAITFORRESULT(1)
@@ -399,7 +399,7 @@ END
             RC_SETMSG("Calibration saved.")
          ENDIF
          
-         RC_CLOSECONNECTION(serviceName[])
+         RC_CLOSECONNECTION(serviceName[], "req")
       ELSE
          RC_SETMSG("Calibration failed.")
          RC_SETMSG(resMessage[])

@@ -270,16 +270,16 @@ END
 
       RESULT={VALUE 0, MSG[] "0"}
 
-      ;Standard Kommunikation fuer Fehlercode
+      ;Receive error codes
       RET = EKI_GetInt(configFileName[], "res/return_code/@value", RESULT.VALUE)
       RET = EKI_GetString(configFileName[], "res/return_code/@message", RESULT.MSG[])
       RETURNCODE = RESULT
 
-      ;Kopieren der Anzahl an Greifpositionen
+      ;Receive number of detections
       RET = EKI_CheckBuffer(configFileName[], "res/grasps/le/id")
       NUMDETECTEDITEMS = RET.Buff
 
-      ;Kopieren aller Greifpositionen
+      ;Receive frames
       for j=1 to NUMDETECTEDITEMS
 
          RET = EKI_GetFrame(configFileName[], "res/grasps/le/pose", POSE)
@@ -367,7 +367,7 @@ END
       IF (DETECTEDITEMS[Index].X == 0) AND (DETECTEDITEMS[Index].Y == 0) AND (DETECTEDITEMS[Index].Z == 0) AND (DETECTEDITEMS[Index].A == 0) AND (DETECTEDITEMS[Index].B == 0) AND (DETECTEDITEMS[Index].C ==0) THEN
          RETURN FALSE
       ELSE
-         ;Meldung CAD MAtching Position
+         ;Show cad match pose
          par[1] = {par_type #value, par_real 0}
          par[1].par_real = DETECTEDITEMS[1].X
          par[2] = {par_type #value, par_real 0}

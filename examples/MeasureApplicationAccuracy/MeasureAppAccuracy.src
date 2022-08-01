@@ -102,7 +102,7 @@ DEF  MeasureAppAccuracy ( )
       RC_SETMSG("Execution failed")
    ENDIF     
 
-   RC_CLOSECONNECTION(serviceName[])
+   RC_CLOSECONNECTION(serviceName[], "req")
    
    ;FOLD SPTP HOME Vel=100 % DEFAULT ;%{PE}
    ;FOLD Parameters ;%{h}
