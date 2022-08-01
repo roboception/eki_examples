@@ -40,7 +40,7 @@ DEF CadmatchDetect( )
 
       ; Reset vision results
       WAIT SEC 0
-      ResetDetectedItems()
+      ResetDetectedGrasps()
 
       ;****************************************
       ; Mandatory application parameters:
@@ -103,7 +103,7 @@ DEF CadmatchDetect( )
       ENDIF
 
       ;Calculate pick position on first detected part
-      CADMatchingPose=DETECTEDITEMS[1]
+      CADMatchingPose=DETECTEDGRASPS[1]
       xP1 = CADMatchingPose
 
       ; Pre pick position
@@ -277,13 +277,13 @@ END
 
       ;Receive number of detections
       RET = EKI_CheckBuffer(configFileName[], "res/grasps/le/id")
-      NUMDETECTEDITEMS = RET.Buff
+      NUMDETECTEDGRASPS = RET.Buff
 
       ;Receive frames
-      for j=1 to NUMDETECTEDITEMS
+      for j=1 to NUMDETECTEDGRASPS
 
          RET = EKI_GetFrame(configFileName[], "res/grasps/le/pose", POSE)
-         DETECTEDITEMS[j] = POSE
+         DETECTEDGRASPS[j] = POSE
 
       endfor
 
@@ -348,33 +348,33 @@ END
 
 ;ENDFOLD (RC_STOP)
 
-;FOLD (ResetDetectedItems)
-   DEF ResetDetectedItems()
+;FOLD (ResetDetectedGrasps)
+   DEF ResetDetectedGrasps()
       DECL INT I
 
       FOR I = 1 TO 32 STEP 1
-         DETECTEDITEMS[I]=$NULLFRAME
+         DETECTEDGRASPS[I]=$NULLFRAME
       ENDFOR
    END
 
-;ENDFOLD (ResetDetectedItems)
+;ENDFOLD (ResetDetectedGrasps)
 
 ;FOLD CheckDetectedItem
    DEFFCT BOOL CheckDetectedItem(Index:IN)
       DECL INT Index
       DECL KrlMsgPar_T par[3]
 
-      IF (DETECTEDITEMS[Index].X == 0) AND (DETECTEDITEMS[Index].Y == 0) AND (DETECTEDITEMS[Index].Z == 0) AND (DETECTEDITEMS[Index].A == 0) AND (DETECTEDITEMS[Index].B == 0) AND (DETECTEDITEMS[Index].C ==0) THEN
+      IF (DETECTEDGRASPS[Index].X == 0) AND (DETECTEDGRASPS[Index].Y == 0) AND (DETECTEDGRASPS[Index].Z == 0) AND (DETECTEDGRASPS[Index].A == 0) AND (DETECTEDGRASPS[Index].B == 0) AND (DETECTEDGRASPS[Index].C ==0) THEN
          RETURN FALSE
       ELSE
          ;Show cad match pose
          par[1] = {par_type #value, par_real 0}
-         par[1].par_real = DETECTEDITEMS[1].X
+         par[1].par_real = DETECTEDGRASPS[1].X
          par[2] = {par_type #value, par_real 0}
-         par[2].par_real = DETECTEDITEMS[1].Y
+         par[2].par_real = DETECTEDGRASPS[1].Y
          par[3] = {par_type #value, par_real 0}
-         par[3].par_real = DETECTEDITEMS[1].Z
-         RC_SETMSG_PARAM("CAD Matching Pose: X: %1, Y: %2, Z: %3", par[])
+         par[3].par_real = DETECTEDGRASPS[1].Z
+         RC_SETMSG_PARAM("Grasp pose: X: %1, Y: %2, Z: %3", par[])
          RETURN TRUE
       ENDIF
 
