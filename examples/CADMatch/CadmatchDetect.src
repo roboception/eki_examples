@@ -3,7 +3,7 @@
 &PARAM EDITMASK = *
 &PARAM TEMPLATE = C:\KRC\Roboter\Template\vorgabe
 &PARAM DISKPATH = KRC:\R1\Program
-DEF cadmatch_detect( )
+DEF CadmatchDetect( )
 
    DECL CHAR serviceName[32]
    DECL EKI_Status RET

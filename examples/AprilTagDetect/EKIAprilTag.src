@@ -2,7 +2,7 @@
 &REL 23
 &PARAM EDITMASK = *
 &PARAM TEMPLATE = C:\KRC\Roboter\Template\vorgabe
-DEF eki_apriltag( )
+DEF EKIAprilTag( )
 DECL INT I
 DECL CHAR serviceName[32]
 DECL RETURNCODE_T RETURN_CODE
