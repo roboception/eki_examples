@@ -104,7 +104,7 @@ DEF CadmatchDetect( )
 
       ;Calculate pick position on first detected part
       CADMatchingPose=DETECTEDGRASPS[1]
-      xP1 = CADMatchingPose
+      XP1 = CADMatchingPose
 
       ; Pre pick position
       ;FOLD SPTP P2 CONT Vel=100 % PDAT4 Tool[2]:Magnet Base[0] ;%{PE}
