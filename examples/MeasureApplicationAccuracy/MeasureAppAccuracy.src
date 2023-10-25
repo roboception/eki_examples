@@ -51,6 +51,7 @@ DEF  MeasureAppAccuracy ( )
    RC_OPENCONNECTION(serviceName[])
    
    RET = EKI_SetString(serviceName[], "req/args/pose_frame", "external")
+   RET = EKI_SetFrame(serviceName[], "req/args/robot_pose", $POS_ACT_MES)
    RET = EKI_Send(serviceName[], "req")
    
    RC_WAITFORRESULT(1)

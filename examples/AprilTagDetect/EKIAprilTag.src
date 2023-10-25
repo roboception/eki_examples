@@ -41,15 +41,7 @@ RC_INIT(serviceName[])
 RC_OPENCONNECTION(serviceName[])
 
 RET = EKI_SetString(serviceName[], "req/args/pose_frame", "external")
-
-CURRENTROBOTPOSITION.X = $POS_ACT.X
-CURRENTROBOTPOSITION.Y = $POS_ACT.Y
-CURRENTROBOTPOSITION.Z = $POS_ACT.Z
-CURRENTROBOTPOSITION.A = $POS_ACT.A
-CURRENTROBOTPOSITION.B = $POS_ACT.B
-CURRENTROBOTPOSITION.C = $POS_ACT.C
-
-RET = EKI_SetFrame(serviceName[], "req/args/robot_pose", CURRENTROBOTPOSITION)
+RET = EKI_SetFrame(serviceName[], "req/args/robot_pose", $POS_ACT_MES)
 
 RET = EKI_Send(serviceName[], "req")
 

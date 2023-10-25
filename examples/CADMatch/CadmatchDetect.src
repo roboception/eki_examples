@@ -50,6 +50,7 @@ DEF CadmatchDetect( )
       ;****************************************
       RET = EKI_SetString(serviceName[], "req/args/template_id", "Template_1")
       RET = EKI_SetString(serviceName[], "req/args/pose_frame", "external")
+      RET = EKI_SetFrame(serviceName[], "req/args/robot_pose", $POS_ACT_MES)
 
       ;****************************************
       ; Optional application parameters:
@@ -60,7 +61,6 @@ DEF CadmatchDetect( )
       ; Offset pre Pick for collision detection [Default: X 0.0, Y 0.0, Z -0.5]
       ; LC Box, if load carrier should be configured externally [Default: X 0.0, Y 0.0, Z 0.0]
       ; LC Pose, if load carrier should be configured externally [Default: X 0.0, Y 0.0, Z 0.0, A 0.0, B 0.0, C 0.0]
-      ; Robot Pose, only relevant for robot mounted sensor [Default: X 0.0, Y 0.0, Z 0.0, A 0.0, B 0.0, C 0.0]
       ;****************************************
       RET = EKI_SetString(serviceName[], "req/args/load_carrier_id", "LoadCarrier_1")
       RET = EKI_SetString(serviceName[], "req/args/region_of_interest_id", "RegionOfInterest_1")
@@ -77,12 +77,6 @@ DEF CadmatchDetect( )
       ;RET = EKI_SetReal(serviceName[], "req/args/load_carrier_compartment/pose/@A ", 0.0)
       ;RET = EKI_SetReal(serviceName[], "req/args/load_carrier_compartment/pose/@B ", 0.0)
       ;RET = EKI_SetReal(serviceName[], "req/args/load_carrier_compartment/pose/@C ", 0.0)
-      ;RET = EKI_SetReal(serviceName[], "req/args/robot_pose/@X", 0.0)
-      ;RET = EKI_SetReal(serviceName[], "req/args/robot_pose/@Y", 0.0)
-      ;RET = EKI_SetReal(serviceName[], "req/args/robot_pose/@Z", 0.0)
-      ;RET = EKI_SetReal(serviceName[], "req/args/robot_pose/@A", 0.0)
-      ;RET = EKI_SetReal(serviceName[], "req/args/robot_pose/@B", 0.0)
-      ;RET = EKI_SetReal(serviceName[], "req/args/robot_pose/@C", 0.0)
 
       ; Send trigger and wait for vision results
       RET = EKI_Send(serviceName[], "req")
