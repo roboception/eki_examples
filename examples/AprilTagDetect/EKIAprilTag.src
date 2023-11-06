@@ -11,6 +11,7 @@ DECL CHAR PRINT_MSG[80]
 DECL KrlMsgPar_T par[3]
 DECL FRAME AprilPose
 DECL FRAME CURRENTROBOTPOSITION
+DECL INT CUSTOM_TOOL_NO
 
 ;FOLD INI;%{PE}
   ;FOLD BASISTECH INI
@@ -35,18 +36,35 @@ $FLAG[1] = FALSE
 
 RC_SETMSG("Start")
 
+; Adjust custom tool no to the currently used tool
+CUSTOM_TOOL_NO = 0
+
 serviceName[] = "rc_april_tag_detect-detect"
 
 RC_INIT(serviceName[])
 RC_OPENCONNECTION(serviceName[])
 
 RET = EKI_SetString(serviceName[], "req/args/pose_frame", "external")
+
+;If $TOOL is changed during program execution,
+;$LOAD must also be adapted accordingly. Otherwise
+;the robot will be moved with the wrong load data,
+;which might result in loss of warranty.
+
+; Set tool to flange to get correct $POS_ACT_MES
+$TOOL = TOOL_DATA[0]
+$LOAD = LOAD_DATA[0]
+
 RET = EKI_SetFrame(serviceName[], "req/args/robot_pose", $POS_ACT_MES)
 
 RET = EKI_Send(serviceName[], "req")
 
 RC_WAITFORRESULT(1)
 RC_READRESULT(serviceName[])
+
+; Switch tool back agian to predefined tool
+$TOOL = TOOL_DATA[CUSTOM_TOOL_NO]
+$LOAD = LOAD_DATA[CUSTOM_TOOL_NO]
 
 IF(RETURNCODE.VALUE < 0) THEN
   RC_SETMSG("Execution failed")

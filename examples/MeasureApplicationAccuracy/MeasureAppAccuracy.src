@@ -8,6 +8,8 @@ DEF  MeasureAppAccuracy ( )
    
    ; Common
    DECL CHAR sModuleName[13]
+   DECL INT CUSTOM_TOOL_NO
+
 
    ; EKI
    DECL CHAR serviceName[50]
@@ -41,19 +43,35 @@ DEF  MeasureAppAccuracy ( )
    
    ;FOLD SPTP HOME Vel=10 % DEFAULT ;%{PE}
       ;FOLD Parameters ;%{h}
-         ;Params IlfProvider=kukaroboter.basistech.inlineforms.movement.spline; Kuka.IsGlobalPoint=False; Kuka.PointName=HOME; Kuka.BlendingEnabled=False; Kuka.MoveDataPtpName=DEFAULT; Kuka.VelocityPtp=10; Kuka.VelocityFieldEnabled=True; Kuka.ColDetectFieldEnabled=True; Kuka.CurrentCDSetIndex=0; Kuka.MovementParameterFieldEnabled=True; IlfCommand=SPTP
+        ;Params IlfProvider=kukaroboter.basistech.inlineforms.movement.spline; Kuka.IsGlobalPoint=False; Kuka.PointName=HOME; Kuka.BlendingEnabled=False; Kuka.MoveDataPtpName=DEFAULT; Kuka.VelocityPtp=10; Kuka.VelocityFieldEnabled=True; Kuka.ColDetectFieldEnabled=True; Kuka.CurrentCDSetIndex=0; Kuka.MovementParameterFieldEnabled=True; IlfCommand=SPTP
       ;ENDFOLD
       SPTP XHOME WITH $VEL_AXIS[1] = SVEL_JOINT(rPTPVelocityStd), $TOOL = STOOL2(FHOME), $BASE = SBASE(FHOME.BASE_NO), $IPO_MODE = SIPO_MODE(FHOME.IPO_FRAME), $LOAD = SLOAD(FHOME.TOOL_NO), $ACC_AXIS[1] = SACC_JOINT(PDEFAULT), $APO = SAPO_PTP(PDEFAULT), $GEAR_JERK[1] = SGEAR_JERK(PDEFAULT), $COLLMON_TOL_PRO[1] = USE_CM_PRO_VALUES(0)
    ;ENDFOLD
    
+  ; Adjust custom tool no to the currently used tool
+  CUSTOM_TOOL_NO = 0
+
    serviceName[] = "rc_april_tag_detect-detect"
    RC_INIT(serviceName[])
    RC_OPENCONNECTION(serviceName[])
    
+  ;If $TOOL is changed during program execution,
+  ;$LOAD must also be adapted accordingly. Otherwise
+  ;the robot will be moved with the wrong load data,
+  ;which might result in loss of warranty.
+
+   ; Set tool to flange to get correct $POS_ACT_MES
+   $TOOL = TOOL_DATA[0]
+   $LOAD = LOAD_DATA[0]
+
    RET = EKI_SetString(serviceName[], "req/args/pose_frame", "external")
    RET = EKI_SetFrame(serviceName[], "req/args/robot_pose", $POS_ACT_MES)
    RET = EKI_Send(serviceName[], "req")
    
+   ; Switch tool back agian to predefined tool
+   $TOOL = TOOL_DATA[CUSTOM_TOOL_NO]
+   $LOAD = LOAD_DATA[CUSTOM_TOOL_NO]
+
    RC_WAITFORRESULT(1)
    RC_READTAGRESULT(serviceName[])
 
