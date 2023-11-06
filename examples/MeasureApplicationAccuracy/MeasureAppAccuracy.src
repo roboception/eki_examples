@@ -48,8 +48,8 @@ DEF  MeasureAppAccuracy ( )
       SPTP XHOME WITH $VEL_AXIS[1] = SVEL_JOINT(rPTPVelocityStd), $TOOL = STOOL2(FHOME), $BASE = SBASE(FHOME.BASE_NO), $IPO_MODE = SIPO_MODE(FHOME.IPO_FRAME), $LOAD = SLOAD(FHOME.TOOL_NO), $ACC_AXIS[1] = SACC_JOINT(PDEFAULT), $APO = SAPO_PTP(PDEFAULT), $GEAR_JERK[1] = SGEAR_JERK(PDEFAULT), $COLLMON_TOL_PRO[1] = USE_CM_PRO_VALUES(0)
    ;ENDFOLD
    
-  ; Adjust custom tool no to the currently used tool
-  CUSTOM_TOOL_NO = 0
+   ; Set custom tool no to the currently used tool
+   CUSTOM_TOOL_NO = $ACT_TOOL
 
    serviceName[] = "rc_april_tag_detect-detect"
    RC_INIT(serviceName[])

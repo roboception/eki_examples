@@ -35,8 +35,8 @@ DEF CadmatchDetect( )
    $FLAG[1] = FALSE
    RC_SETMSG("Start")
 
-   ; Adjust custom tool no to the currently used tool
-    CUSTOM_TOOL_NO = 0
+   ; Set custom tool no to the currently used tool
+   CUSTOM_TOOL_NO = $ACT_TOOL
 
    serviceName[] = "rc_cadmatch-detect_object"
    RC_INIT(serviceName[])
