@@ -78,7 +78,6 @@ DEF  MeasureAppAccuracy ( )
    ; WARNING: Make sure that hand-eye-calibration was done with no tool (NULLFRAME / Flange)
    ;          before enabling the following line!
    ; ----------------------------------------------------------------------------------------
-   ;CUSTOM_TOOL_NO = $ACT_TOOL
    ;$TOOL = TOOL_DATA[CUSTOM_TOOL_NO]
    ;$LOAD = LOAD_DATA[CUSTOM_TOOL_NO]
 
