@@ -1,5 +1,5 @@
-&ACCESS RVO
-&REL 23
+&ACCESS RVP
+&REL 32
 &PARAM EDITMASK = *
 &PARAM TEMPLATE = C:\KRC\Roboter\Template\vorgabe
 DEF EKIAprilTag( )
@@ -36,8 +36,11 @@ $FLAG[1] = FALSE
 
 RC_SETMSG("Start")
 
-; Set custom tool no to the currently used tool
-CUSTOM_TOOL_NO = $ACT_TOOL
+; Set custom tool to the currently used tool
+; WARNING: Make sure that hand-eye-calibration was done with no tool (NULLFRAME / Flange)
+;          before enabling the following line!
+; ----------------------------------------------------------------------------------------
+; CUSTOM_TOOL_NO = $ACT_TOOL
 
 serviceName[] = "rc_april_tag_detect-detect"
 
@@ -52,8 +55,10 @@ RET = EKI_SetString(serviceName[], "req/args/pose_frame", "external")
 ;which might result in loss of warranty.
 
 ; Set tool to flange to get correct $POS_ACT_MES
-$TOOL = TOOL_DATA[0]
-$LOAD = LOAD_DATA[0]
+; WARNING: Make sure that hand-eye-calibration was done with no tool (NULLFRAME / Flange)
+;          before enabling the following line!
+; ----------------------------------------------------------------------------------------
+;$TOOL = $NULLFRAME
 
 RET = EKI_SetFrame(serviceName[], "req/args/robot_pose", $POS_ACT_MES)
 
@@ -63,8 +68,11 @@ RC_WAITFORRESULT(1)
 RC_READRESULT(serviceName[])
 
 ; Switch tool back agian to predefined tool
-$TOOL = TOOL_DATA[CUSTOM_TOOL_NO]
-$LOAD = LOAD_DATA[CUSTOM_TOOL_NO]
+; WARNING: Make sure that hand-eye-calibration was done with no tool (NULLFRAME / Flange)
+;          before enabling the following line!
+; ----------------------------------------------------------------------------------------
+;$TOOL = TOOL_DATA[CUSTOM_TOOL_NO]
+;$LOAD = LOAD_DATA[CUSTOM_TOOL_NO]
 
 IF(RETURNCODE.VALUE < 0) THEN
   RC_SETMSG("Execution failed")
@@ -81,12 +89,13 @@ for I=1 to NUMDETECTEDITEMS
   RC_SETMSG_PARAM("April Tag Pose: X: %1, Y: %2, Z: %3", par[])
   
   AprilPose=DETECTEDITEMS[I]
-;FOLD SPTP P1 Vel=100 % PDAT1 Tool[2]:gripper Base[0] ;%{PE}
-;FOLD Parameters ;%{h}
-;Params IlfProvider=kukaroboter.basistech.inlineforms.movement.spline; Kuka.IsGlobalPoint=False; Kuka.PointName=P1; Kuka.BlendingEnabled=False; Kuka.MoveDataPtpName=PDAT1; Kuka.VelocityPtp=100; Kuka.VelocityFieldEnabled=True; Kuka.CurrentCDSetIndex=0; Kuka.MovementParameterFieldEnabled=True; IlfCommand=SPTP
-;ENDFOLD
-SPTP AprilPose WITH $VEL_AXIS[1] = SVEL_JOINT(100.0), $TOOL = STOOL2(FP1), $BASE = SBASE(FP1.BASE_NO), $IPO_MODE = SIPO_MODE(FP1.IPO_FRAME), $LOAD = SLOAD(FP1.TOOL_NO), $ACC_AXIS[1] = SACC_JOINT(PPDAT1), $APO = SAPO_PTP(PPDAT1), $GEAR_JERK[1] = SGEAR_JERK(PPDAT1), $COLLMON_TOL_PRO[1] = USE_CM_PRO_VALUES(0)
-;ENDFOLD
+
+  ;FOLD SPTP P1 Vel=100 % PDAT1 Tool[2]:gripper Base[0] ;%{PE}
+  ;FOLD Parameters ;%{h}
+  ;Params IlfProvider=kukaroboter.basistech.inlineforms.movement.spline; Kuka.IsGlobalPoint=False; Kuka.PointName=P1; Kuka.BlendingEnabled=False; Kuka.MoveDataPtpName=PDAT1; Kuka.VelocityPtp=100; Kuka.VelocityFieldEnabled=True; Kuka.CurrentCDSetIndex=0; Kuka.MovementParameterFieldEnabled=True; IlfCommand=SPTP
+  ;ENDFOLD
+  SPTP AprilPose WITH $VEL_AXIS[1] = SVEL_JOINT(100.0), $TOOL = STOOL2(FP1), $BASE = SBASE(FP1.BASE_NO), $IPO_MODE = SIPO_MODE(FP1.IPO_FRAME), $LOAD = SLOAD(FP1.TOOL_NO), $ACC_AXIS[1] = SACC_JOINT(PPDAT1), $APO = SAPO_PTP(PPDAT1), $GEAR_JERK[1] = SGEAR_JERK(PPDAT1), $COLLMON_TOL_PRO[1] = USE_CM_PRO_VALUES(0)
+  ;ENDFOLD
   
 endfor
 

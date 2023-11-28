@@ -49,7 +49,10 @@ DEF  MeasureAppAccuracy ( )
    ;ENDFOLD
    
    ; Set custom tool no to the currently used tool
-   CUSTOM_TOOL_NO = $ACT_TOOL
+   ; WARNING: Make sure that hand-eye-calibration was done with no tool (NULLFRAME / Flange)
+   ;          before enabling the following line!
+   ; ----------------------------------------------------------------------------------------
+   ;CUSTOM_TOOL_NO = $ACT_TOOL
 
    serviceName[] = "rc_april_tag_detect-detect"
    RC_INIT(serviceName[])
@@ -61,16 +64,23 @@ DEF  MeasureAppAccuracy ( )
   ;which might result in loss of warranty.
 
    ; Set tool to flange to get correct $POS_ACT_MES
-   $TOOL = TOOL_DATA[0]
-   $LOAD = LOAD_DATA[0]
+   ; WARNING: Make sure that hand-eye-calibration was done with no tool (NULLFRAME / Flange)
+   ;          before enabling the following line!
+   ; ----------------------------------------------------------------------------------------
+   ;CUSTOM_TOOL_NO = $ACT_TOOL
+   ;$TOOL = $NULLFRAME
 
    RET = EKI_SetString(serviceName[], "req/args/pose_frame", "external")
    RET = EKI_SetFrame(serviceName[], "req/args/robot_pose", $POS_ACT_MES)
    RET = EKI_Send(serviceName[], "req")
    
    ; Switch tool back agian to predefined tool
-   $TOOL = TOOL_DATA[CUSTOM_TOOL_NO]
-   $LOAD = LOAD_DATA[CUSTOM_TOOL_NO]
+   ; WARNING: Make sure that hand-eye-calibration was done with no tool (NULLFRAME / Flange)
+   ;          before enabling the following line!
+   ; ----------------------------------------------------------------------------------------
+   ;CUSTOM_TOOL_NO = $ACT_TOOL
+   ;$TOOL = TOOL_DATA[CUSTOM_TOOL_NO]
+   ;$LOAD = LOAD_DATA[CUSTOM_TOOL_NO]
 
    RC_WAITFORRESULT(1)
    RC_READTAGRESULT(serviceName[])

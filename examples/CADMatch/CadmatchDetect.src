@@ -36,7 +36,10 @@ DEF CadmatchDetect( )
    RC_SETMSG("Start")
 
    ; Set custom tool no to the currently used tool
-   CUSTOM_TOOL_NO = $ACT_TOOL
+   ; WARNING: Make sure that hand-eye-calibration was done with no tool (NULLFRAME / Flange)
+   ;          before enabling the following line!
+   ; ----------------------------------------------------------------------------------------
+   ;CUSTOM_TOOL_NO = $ACT_TOOL
 
    serviceName[] = "rc_cadmatch-detect_object"
    RC_INIT(serviceName[])
@@ -55,8 +58,10 @@ DEF CadmatchDetect( )
       ;which might result in loss of warranty.
 
       ; Set tool to flange to get correct $POS_ACT_MES
-      $TOOL = TOOL_DATA[0]
-      $LOAD = LOAD_DATA[0]
+      ; WARNING: Make sure that hand-eye-calibration was done with no tool (NULLFRAME / Flange)
+      ;          before enabling the following line!
+      ; ----------------------------------------------------------------------------------------
+      ;$TOOL = $NULLFRAME
 
 
       ;****************************************
@@ -101,8 +106,11 @@ DEF CadmatchDetect( )
       RC_READRESULT(serviceName[])
 
       ; Switch tool back agian to predefined tool
-      $TOOL = TOOL_DATA[CUSTOM_TOOL_NO]
-      $LOAD = LOAD_DATA[CUSTOM_TOOL_NO]
+      ; WARNING: Make sure that hand-eye-calibration was done with no tool (NULLFRAME / Flange)
+      ;          before enabling the following line!
+      ; ----------------------------------------------------------------------------------------
+      ;$TOOL = TOOL_DATA[CUSTOM_TOOL_NO]
+      ;$LOAD = LOAD_DATA[CUSTOM_TOOL_NO]
 
       ; Error handling
       IF (RETURNCODE.VALUE < 0) THEN
