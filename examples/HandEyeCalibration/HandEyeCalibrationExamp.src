@@ -1,0 +1,416 @@
+&ACCESS RVO
+DEF HandEyeCalibrationExamp()
+   DECL CHAR serviceNameReset[64]
+   DECL CHAR serviceNameParams[64]
+   DECL CHAR serviceNameSetPose[64]
+   DECL CHAR serviceNameCalibrate[64]
+   DECL CHAR serviceNameSave[64]
+   DECL REAL GRID_WIDTH
+   DECL REAL GRID_HEIGHT
+   DECL BOOL ROBOT_MOUNTED
+   
+   ; Service names - same as the EKI service names
+   ; TODO: Change these to the correct service names - could be "rc_hand_eye_calibration-reset_calibration"
+   serviceNameReset[] = "rc_hand_eye_calibration-reset_calibration"
+   serviceNameParams[] = "rc_hand_eye_calibration-parameters"
+   serviceNameSetPose[] = "rc_hand_eye_calibration-set_pose"
+   serviceNameCalibrate[] = "rc_hand_eye_calibration-calibrate"
+   serviceNameSave[] = "rc_hand_eye_calibration-save_calibration"
+   
+   ; Default values for small calibration grid
+   GRID_WIDTH = 0.26     ; Width of calibration grid in meters
+   GRID_HEIGHT = 0.18    ; Height of calibration grid in meters
+   ROBOT_MOUNTED = FALSE ; Camera is statically mounted (not on robot)
+   
+   ;FOLD INI;%{PE}
+      ;FOLD BASISTECH INI
+         GLOBAL INTERRUPT DECL 3 WHEN $STOPMESS==TRUE DO IR_STOPM ( )
+         INTERRUPT ON 3 
+         BAS (#INITMOV,0 )
+      ;ENDFOLD (BASISTECH INI)
+   ;ENDFOLD (INI)
+   
+   INTERRUPT DECL 89 WHEN $FLAG[998] DO RC_NOTIFYRECEIVED(1, 998)
+   INTERRUPT ON 89
+   
+   ;FOLD SPTP HOME Vel=100 % DEFAULT ;%{PE}
+      ;FOLD Parameters ;%{h}
+         ;Params IlfProvider=kukaroboter.basistech.inlineforms.movement.spline; Kuka.IsGlobalPoint=False; Kuka.PointName=HOME; Kuka.BlendingEnabled=False; Kuka.MoveDataPtpName=DEFAULT; Kuka.VelocityPtp=100; Kuka.VelocityFieldEnabled=True; Kuka.CurrentCDSetIndex=0; Kuka.MovementParameterFieldEnabled=True; IlfCommand=SPTP
+      ;ENDFOLD
+      SPTP XHOME WITH $VEL_AXIS[1] = SVEL_JOINT(100.0), $TOOL = STOOL2(FHOME), $BASE = SBASE(FHOME.BASE_NO), $IPO_MODE = SIPO_MODE(FHOME.IPO_FRAME), $LOAD = SLOAD(FHOME.TOOL_NO), $ACC_AXIS[1] = SACC_JOINT(PDEFAULT), $APO = SAPO_PTP(PDEFAULT), $GEAR_JERK[1] = SGEAR_JERK(PDEFAULT), $COLLMON_TOL_PRO[1] = USE_CM_PRO_VALUES(0)
+   ;ENDFOLD
+   
+   $FLAG[1] = FALSE
+   
+   RC_SETMSG("Start HEC (8 pose)")
+   
+   RC_INIT(serviceNameReset[])
+   RC_INIT(serviceNameParams[])
+   RC_INIT(serviceNameSetPose[])
+   RC_INIT(serviceNameCalibrate[])
+   RC_INIT(serviceNameSave[])
+   
+   RC_HEC_RESETCALIBRATION(serviceNameReset[])
+   
+   RC_HEC_SETPARAMETERS(serviceNameParams[], GRID_WIDTH, GRID_HEIGHT, ROBOT_MOUNTED)
+   ;FOLD SPTP P1 Vel=100 % PDAT1 Tool[0]:SomeTool Base[0] ;%{PE}
+      ;FOLD Parameters ;%{h}
+         ;Params IlfProvider=kukaroboter.basistech.inlineforms.movement.spline; Kuka.IsGlobalPoint=False; Kuka.PointName=P1; Kuka.BlendingEnabled=False; Kuka.MoveDataPtpName=PDAT1; Kuka.VelocityPtp=100; Kuka.VelocityFieldEnabled=True; Kuka.CurrentCDSetIndex=0; Kuka.MovementParameterFieldEnabled=True; IlfCommand=SPTP
+      ;ENDFOLD
+      SPTP XP1 WITH $VEL_AXIS[1] = SVEL_JOINT(100.0), $TOOL = STOOL2(FP1), $BASE = SBASE(FP1.BASE_NO), $IPO_MODE = SIPO_MODE(FP1.IPO_FRAME), $LOAD = SLOAD(FP1.TOOL_NO), $ACC_AXIS[1] = SACC_JOINT(PPDAT1), $APO = SAPO_PTP(PPDAT1), $GEAR_JERK[1] = SGEAR_JERK(PPDAT1), $COLLMON_TOL_PRO[1] = USE_CM_PRO_VALUES(0)
+   ;ENDFOLD
+   WAIT SEC 2.0
+   RC_HEC_SETCURRENTPOSE(serviceNameSetPose[], 1)
+   
+   ;FOLD SPTP P2 Vel=100 % PDAT1 Tool[0]:SomeTool Base[0] ;%{PE}
+      ;FOLD Parameters ;%{h}
+         ;Params IlfProvider=kukaroboter.basistech.inlineforms.movement.spline; Kuka.IsGlobalPoint=False; Kuka.PointName=P2; Kuka.BlendingEnabled=False; Kuka.MoveDataPtpName=PDAT1; Kuka.VelocityPtp=100; Kuka.VelocityFieldEnabled=True; Kuka.CurrentCDSetIndex=0; Kuka.MovementParameterFieldEnabled=True; IlfCommand=SPTP
+      ;ENDFOLD
+      SPTP XP2 WITH $VEL_AXIS[1] = SVEL_JOINT(100.0), $TOOL = STOOL2(FP1), $BASE = SBASE(FP1.BASE_NO), $IPO_MODE = SIPO_MODE(FP1.IPO_FRAME), $LOAD = SLOAD(FP1.TOOL_NO), $ACC_AXIS[1] = SACC_JOINT(PPDAT1), $APO = SAPO_PTP(PPDAT1), $GEAR_JERK[1] = SGEAR_JERK(PPDAT1), $COLLMON_TOL_PRO[1] = USE_CM_PRO_VALUES(0)
+   ;ENDFOLD
+   WAIT SEC 2.0
+   RC_HEC_SETCURRENTPOSE(serviceNameSetPose[], 2)
+   
+   ;FOLD SPTP P3 Vel=100 % PDAT1 Tool[0]:SomeTool Base[0] ;%{PE}
+      ;FOLD Parameters ;%{h}
+         ;Params IlfProvider=kukaroboter.basistech.inlineforms.movement.spline; Kuka.IsGlobalPoint=False; Kuka.PointName=P3; Kuka.BlendingEnabled=False; Kuka.MoveDataPtpName=PDAT1; Kuka.VelocityPtp=100; Kuka.VelocityFieldEnabled=True; Kuka.CurrentCDSetIndex=0; Kuka.MovementParameterFieldEnabled=True; IlfCommand=SPTP
+      ;ENDFOLD
+      SPTP XP3 WITH $VEL_AXIS[1] = SVEL_JOINT(100.0), $TOOL = STOOL2(FP1), $BASE = SBASE(FP1.BASE_NO), $IPO_MODE = SIPO_MODE(FP1.IPO_FRAME), $LOAD = SLOAD(FP1.TOOL_NO), $ACC_AXIS[1] = SACC_JOINT(PPDAT1), $APO = SAPO_PTP(PPDAT1), $GEAR_JERK[1] = SGEAR_JERK(PPDAT1), $COLLMON_TOL_PRO[1] = USE_CM_PRO_VALUES(0)
+   ;ENDFOLD
+   WAIT SEC 2.0
+   RC_HEC_SETCURRENTPOSE(serviceNameSetPose[], 3)
+   
+   ;FOLD SPTP P4 Vel=100 % PDAT1 Tool[0]:SomeTool Base[0] ;%{PE}
+      ;FOLD Parameters ;%{h}
+         ;Params IlfProvider=kukaroboter.basistech.inlineforms.movement.spline; Kuka.IsGlobalPoint=False; Kuka.PointName=P4; Kuka.BlendingEnabled=False; Kuka.MoveDataPtpName=PDAT1; Kuka.VelocityPtp=100; Kuka.VelocityFieldEnabled=True; Kuka.CurrentCDSetIndex=0; Kuka.MovementParameterFieldEnabled=True; IlfCommand=SPTP
+      ;ENDFOLD
+      SPTP XP4 WITH $VEL_AXIS[1] = SVEL_JOINT(100.0), $TOOL = STOOL2(FP1), $BASE = SBASE(FP1.BASE_NO), $IPO_MODE = SIPO_MODE(FP1.IPO_FRAME), $LOAD = SLOAD(FP1.TOOL_NO), $ACC_AXIS[1] = SACC_JOINT(PPDAT1), $APO = SAPO_PTP(PPDAT1), $GEAR_JERK[1] = SGEAR_JERK(PPDAT1), $COLLMON_TOL_PRO[1] = USE_CM_PRO_VALUES(0)
+   ;ENDFOLD
+   WAIT SEC 2.0
+   RC_HEC_SETCURRENTPOSE(serviceNameSetPose[], 4)
+   
+   ;FOLD SPTP P5 Vel=100 % PDAT1 Tool[0]:SomeTool Base[0] ;%{PE}
+      ;FOLD Parameters ;%{h}
+         ;Params IlfProvider=kukaroboter.basistech.inlineforms.movement.spline; Kuka.IsGlobalPoint=False; Kuka.PointName=P5; Kuka.BlendingEnabled=False; Kuka.MoveDataPtpName=PDAT1; Kuka.VelocityPtp=100; Kuka.VelocityFieldEnabled=True; Kuka.CurrentCDSetIndex=0; Kuka.MovementParameterFieldEnabled=True; IlfCommand=SPTP
+      ;ENDFOLD
+      SPTP XP5 WITH $VEL_AXIS[1] = SVEL_JOINT(100.0), $TOOL = STOOL2(FP1), $BASE = SBASE(FP1.BASE_NO), $IPO_MODE = SIPO_MODE(FP1.IPO_FRAME), $LOAD = SLOAD(FP1.TOOL_NO), $ACC_AXIS[1] = SACC_JOINT(PPDAT1), $APO = SAPO_PTP(PPDAT1), $GEAR_JERK[1] = SGEAR_JERK(PPDAT1), $COLLMON_TOL_PRO[1] = USE_CM_PRO_VALUES(0)
+   ;ENDFOLD
+   WAIT SEC 2.0
+   RC_HEC_SETCURRENTPOSE(serviceNameSetPose[], 5)
+   
+   ;FOLD SPTP P6 Vel=100 % PDAT1 Tool[0]:SomeTool Base[0] ;%{PE}
+      ;FOLD Parameters ;%{h}
+         ;Params IlfProvider=kukaroboter.basistech.inlineforms.movement.spline; Kuka.IsGlobalPoint=False; Kuka.PointName=P6; Kuka.BlendingEnabled=False; Kuka.MoveDataPtpName=PDAT1; Kuka.VelocityPtp=100; Kuka.VelocityFieldEnabled=True; Kuka.CurrentCDSetIndex=0; Kuka.MovementParameterFieldEnabled=True; IlfCommand=SPTP
+      ;ENDFOLD
+      SPTP XP6 WITH $VEL_AXIS[1] = SVEL_JOINT(100.0), $TOOL = STOOL2(FP1), $BASE = SBASE(FP1.BASE_NO), $IPO_MODE = SIPO_MODE(FP1.IPO_FRAME), $LOAD = SLOAD(FP1.TOOL_NO), $ACC_AXIS[1] = SACC_JOINT(PPDAT1), $APO = SAPO_PTP(PPDAT1), $GEAR_JERK[1] = SGEAR_JERK(PPDAT1), $COLLMON_TOL_PRO[1] = USE_CM_PRO_VALUES(0)
+   ;ENDFOLD
+   WAIT SEC 2.0
+   RC_HEC_SETCURRENTPOSE(serviceNameSetPose[], 6)
+   
+   ;FOLD SPTP P7 Vel=100 % PDAT1 Tool[0]:SomeTool Base[0] ;%{PE}
+      ;FOLD Parameters ;%{h}
+         ;Params IlfProvider=kukaroboter.basistech.inlineforms.movement.spline; Kuka.IsGlobalPoint=False; Kuka.PointName=P7; Kuka.BlendingEnabled=False; Kuka.MoveDataPtpName=PDAT1; Kuka.VelocityPtp=100; Kuka.VelocityFieldEnabled=True; Kuka.CurrentCDSetIndex=0; Kuka.MovementParameterFieldEnabled=True; IlfCommand=SPTP
+      ;ENDFOLD
+      SPTP XP7 WITH $VEL_AXIS[1] = SVEL_JOINT(100.0), $TOOL = STOOL2(FP1), $BASE = SBASE(FP1.BASE_NO), $IPO_MODE = SIPO_MODE(FP1.IPO_FRAME), $LOAD = SLOAD(FP1.TOOL_NO), $ACC_AXIS[1] = SACC_JOINT(PPDAT1), $APO = SAPO_PTP(PPDAT1), $GEAR_JERK[1] = SGEAR_JERK(PPDAT1), $COLLMON_TOL_PRO[1] = USE_CM_PRO_VALUES(0)
+   ;ENDFOLD
+   WAIT SEC 2.0
+   RC_HEC_SETCURRENTPOSE(serviceNameSetPose[], 7)
+   
+   ;FOLD SPTP P8 Vel=100 % PDAT1 Tool[0]:SomeTool Base[0] ;%{PE}
+      ;FOLD Parameters ;%{h}
+         ;Params IlfProvider=kukaroboter.basistech.inlineforms.movement.spline; Kuka.IsGlobalPoint=False; Kuka.PointName=P8; Kuka.BlendingEnabled=False; Kuka.MoveDataPtpName=PDAT1; Kuka.VelocityPtp=100; Kuka.VelocityFieldEnabled=True; Kuka.CurrentCDSetIndex=0; Kuka.MovementParameterFieldEnabled=True; IlfCommand=SPTP
+      ;ENDFOLD
+      SPTP XP8 WITH $VEL_AXIS[1] = SVEL_JOINT(100.0), $TOOL = STOOL2(FP1), $BASE = SBASE(FP1.BASE_NO), $IPO_MODE = SIPO_MODE(FP1.IPO_FRAME), $LOAD = SLOAD(FP1.TOOL_NO), $ACC_AXIS[1] = SACC_JOINT(PPDAT1), $APO = SAPO_PTP(PPDAT1), $GEAR_JERK[1] = SGEAR_JERK(PPDAT1), $COLLMON_TOL_PRO[1] = USE_CM_PRO_VALUES(0)
+   ;ENDFOLD
+   WAIT SEC 2.0
+   RC_HEC_SETCURRENTPOSE(serviceNameSetPose[], 8)
+   
+   RC_HEC_CALIBRATEANDSAVE(serviceNameCalibrate[], serviceNameSave[])
+   
+   RC_SETMSG("Finish")
+   
+   SPTP XHOME WITH $VEL_AXIS[1] = SVEL_JOINT(100.0), $TOOL = STOOL2(FHOME), $BASE = SBASE(FHOME.BASE_NO), $IPO_MODE = SIPO_MODE(FHOME.IPO_FRAME), $LOAD = SLOAD(FHOME.TOOL_NO), $ACC_AXIS[1] = SACC_JOINT(PDEFAULT), $APO = SAPO_PTP(PDEFAULT), $GEAR_JERK[1] = SGEAR_JERK(PDEFAULT), $COLLMON_TOL_PRO[1] = USE_CM_PRO_VALUES(0)
+END
+
+; ---- Roboception Functions ----
+;FOLD RC Functions
+   
+   ;FOLD RC_SETMSG
+      DEF RC_SETMSG(msg[]:IN)
+         DECL CHAR msg[]
+         DECL KrlMsgPar_T params[3]
+         RC_SETMSG_PARAM(msg[], params[])
+      END
+   ;ENDFOLD (RC_SETMSG)
+   
+   ;FOLD RC_SETMSG_PARAM
+      DEF RC_SETMSG_PARAM(msg[]:IN, params:OUT)
+         DECL CHAR msg[]
+         DECL KrlMsgPar_T params[]
+         
+         DECL KrlMsg_T name
+         DECL KrlMsgOpt_T options
+         DECL INT Handle, len, count
+         DECL EKrlMsgType Type
+         
+         name={modul[] "RC", nr 1, msg_txt[] " "}
+         
+         Type=#notify
+         
+         len=STRLEN(msg[])
+         IF len>0 THEN
+            IF len>80 THEN
+               len=80
+            ENDIF
+            FOR count=1 TO len
+               name.msg_txt[count]=msg[count]
+            ENDFOR
+         ELSE
+            name.msg_txt[]="parameter msg[] is missing"
+         ENDIF
+         
+         Handle=Set_KrlMsg(Type, name, params[], options)
+      END
+   ;ENDFOLD (RC_SETMSG_PARAM)
+   
+   ;FOLD RC_SETERRORMSG
+      DEF RC_SETERRORMSG(msg[]:IN)
+         DECL CHAR msg[]
+         DECL KrlMsgPar_T params[3]
+         
+         DECL KrlMsg_T name
+         DECL KrlMsgOpt_T options
+         DECL INT Handle, len, count
+         DECL EKrlMsgType Type
+         
+         name={modul[] "RC", nr 2, msg_txt[] " "}
+         
+         Type=#quit
+         
+         len=STRLEN(msg[])
+         IF len>0 THEN
+            IF len>80 THEN
+               len=80
+            ENDIF
+            FOR count=1 TO len
+               name.msg_txt[count]=msg[count]
+            ENDFOR
+         ELSE
+            name.msg_txt[]="parameter msg[] is missing"
+         ENDIF
+         
+         Handle=Set_KrlMsg(Type, name, params[], options)
+         
+      END
+   ;ENDFOLD (RC_SETERRORMSG)
+   
+   ;FOLD RC_INIT
+      DEF RC_INIT(configFileName[]:IN)
+         DECL CHAR configFileName[]
+         DECL EKI_Status RET
+         RET=EKI_INIT(configFileName[])
+      END
+   ;ENDFOLD (RC_INIT)
+   
+   ;FOLD RC_OPENCONNECTION
+      DEF RC_OPENCONNECTION(configFileName[]:IN)
+         DECL CHAR configFileName[]
+         DECL EKI_Status RET
+         RET=EKI_Open(configFileName[])
+         EKI_CHECK(RET,#Quit)
+      END
+   ;ENDFOLD (RC_OPENCONNECTION)
+   
+   ;FOLD RC_CLOSECONNECTION
+      DEF RC_CLOSECONNECTION(configFileName[]:IN, strPlace[]:IN)
+         DECL CHAR configFileName[]
+         DECL CHAR strPlace[]
+         DECL EKI_Status RET
+         WAIT SEC 0
+         RET=EKI_Close(configFileName[])
+         RET=EKI_ClearBuffer(configFileName[], strPlace[])
+      END
+   ;ENDFOLD (RC_CLOSECONNECTION)
+   
+   ;FOLD RC_WAITFORRESULT
+      DEF RC_WAITFORRESULT(WaitFlag:IN)
+         DECL INT WaitFlag
+         
+         WAIT FOR $FLAG[WaitFlag] OR NOT $FLAG[RCEkiAliveFlagNo]
+         
+         ;Eki-connection has been closed 
+         
+         IF(NOT $FLAG[RCEkiAliveFlagNo]) THEN
+            RC_SETMSG("EKI connection lost")
+         ENDIF
+         
+         $FLAG[WaitFlag] = FALSE
+      END
+   ;ENDFOLD (RC_WAITFORRESULT)
+   
+   ;FOLD RC_NOTIFYRECEIVED
+      DEF RC_NOTIFYRECEIVED(WAITFLAG:IN, EOFRESULFLAG:IN)
+         DECL INT WAITFLAG
+         DECL INT EOFRESULFLAG
+         $FLAG[EOFRESULFLAG]=FALSE
+         $FLAG[WAITFLAG]=TRUE
+      END
+   ;ENDFOLD (RC_NOTIFYRECEIVED)
+   
+   ;FOLD RC_HEC_RESETCALIBRATION
+      DEF RC_HEC_RESETCALIBRATION(serviceNameReset[]:IN)
+         DECL CHAR serviceNameReset[]
+         DECL RETURNCODE_T RESULT
+         DECL EKI_STATUS RET
+         
+         RC_OPENCONNECTION(serviceNameReset[])
+         
+         RET = EKI_Send(serviceNameReset[], "req")
+         RC_WAITFORRESULT(1)
+         
+         RESULT={VALUE 0, MSG[] "0"}
+         
+         RET = EKI_GetInt(serviceNameReset[], "res/return_code/@value", RESULT.VALUE)
+         RET = EKI_GetString(serviceNameReset[], "res/return_code/@message", RESULT.MSG[])
+         
+         IF(RESULT.VALUE < 0) THEN
+            RC_SETMSG("Execution failed")
+            RC_SETMSG(RESULT.MSG[])
+         ENDIF
+         RC_CLOSECONNECTION(serviceNameReset[], "req")
+      END
+   ;ENDFOLD
+   
+   ;FOLD RC_HEC_SETPARAMETERS
+      DEF RC_HEC_SETPARAMETERS(serviceNameParams[]:IN, gridWidth:IN, gridHeight:IN, robotMounted:IN)
+         DECL CHAR serviceNameParams[]
+         DECL REAL gridHeight
+         DECL REAL gridWidth
+         DECL BOOL robotMounted
+         DECL EKI_STATUS RET
+         
+         RC_OPENCONNECTION(serviceNameParams[])
+         
+         RET = EKI_SetReal(serviceNameParams[], "req/parameters/grid_height/@value", gridHeight)
+         RET = EKI_SetReal(serviceNameParams[], "req/parameters/grid_width/@value", gridWidth)
+         RET = EKI_SetBool(serviceNameParams[], "req/parameters/robot_mounted/@value", robotMounted)
+         
+         RET = EKI_Send(serviceNameParams[], "req")
+         RC_WAITFORRESULT(1)
+         RC_CLOSECONNECTION(serviceNameParams[], "req")
+      END
+   ;ENDFOLD
+   
+   ;FOLD RC_HEC_SETCURRENTPOSE
+      DEF RC_HEC_SETCURRENTPOSE(serviceNameSetPose[]:IN, slot:IN)
+         DECL CHAR serviceNameSetPose[]
+         DECL INT slot
+         DECL FRAME pose
+         DECL RETURNCODE_T RESULT
+         DECL EKI_STATUS RET
+         DECL BOOL rc_success
+         INT i
+         CHAR nodeMessage[512]
+         DECL KrlMsgPar_T params[1]
+         
+         FOR i=1 TO 512
+            nodeMessage[i] = 0
+         ENDFOR
+         
+         RC_OPENCONNECTION(serviceNameSetPose[])
+         
+         pose.X = $POS_ACT_MES.X
+         pose.Y = $POS_ACT_MES.Y
+         pose.Z = $POS_ACT_MES.Z
+         pose.A = $POS_ACT_MES.A
+         pose.B = $POS_ACT_MES.B
+         pose.C = $POS_ACT_MES.C
+         
+         RET = EKI_SetFrame(serviceNameSetPose[], "req/args/pose", pose)
+         RET = EKI_SetInt(serviceNameSetPose[], "req/args/slot", slot)
+         
+         RET = EKI_Send(serviceNameSetPose[], "req")
+         RC_WAITFORRESULT(1)
+         
+         RESULT={VALUE 0, MSG[] "0"}
+         rc_success=FALSE
+         
+         RET = EKI_GetBool(serviceNameSetPose[], "res/success", rc_success)
+         RET = EKI_GetString(serviceNameSetPose[], "res/message", nodeMessage[])
+         RET = EKI_GetInt(serviceNameSetPose[], "res/return_code/@value", RESULT.VALUE)
+         RET = EKI_GetString(serviceNameSetPose[], "res/return_code/@message", RESULT.MSG[])
+         
+         params[1] = {par_type #VALUE, par_int 0}
+         params[1].par_int = slot
+         
+         IF(rc_success) THEN
+            RC_SETMSG_PARAM("Set pose %1 rc_successful", params[])         
+         ELSE
+            RC_SETMSG_PARAM("Set pose %1 failed", params[])
+            RC_SETERRORMSG(nodeMessage[])
+         ENDIF
+         RC_CLOSECONNECTION(serviceNameSetPose[], "req")
+      END
+   ;ENDFOLD
+   
+   ;FOLD RC_HEC_CALIBRATEANDSAVE
+      DEF RC_HEC_CALIBRATEANDSAVE(serviceNameCalibrate[]:IN, serviceNameSave[]:IN)
+         DECL CHAR serviceNameCalibrate[]
+         DECL CHAR serviceNameSave[]
+         DECL CHAR resMessage[160]
+         DECL BOOL rc_success
+         DECL REAL calibrationError
+         DECL EKI_STATUS RET
+         DECL RETURNCODE_T RESULT
+         DECL KrlMsgPar_T par[3]
+         
+         RC_OPENCONNECTION(serviceNameCalibrate[])
+         
+         RET = EKI_Send(serviceNameCalibrate[], "req")
+         RC_WAITFORRESULT(1)
+         
+         RESULT={VALUE 0, MSG[] "0"}
+         
+         rc_success = FALSE
+         resMessage[] = "-"
+         calibrationError = 99.9
+         
+         RET = EKI_GetBool(serviceNameCalibrate[], "res/success", rc_success)
+         RET = EKI_GetString(serviceNameCalibrate[], "res/message", resMessage[])
+         RET = EKI_GetReal(serviceNameCalibrate[], "res/error", calibrationError)
+         
+         RC_CLOSECONNECTION(serviceNameCalibrate[], "req")
+         
+         IF(rc_success) THEN
+            RC_SETMSG("Calibration rc_successful.")
+            
+            par[1] = {par_type #value, par_real 0}
+            par[1].par_real = calibrationError
+            RC_SETMSG_PARAM("Calibration error: %1", par[])
+            
+            RC_OPENCONNECTION(serviceNameSave[])
+            
+            RET = EKI_Send(serviceNameSave[], "req")
+            RC_WAITFORRESULT(1)
+            
+            RESULT={VALUE 0, MSG[] "0"}
+            
+            RET = EKI_GetInt(serviceNameSave[], "res/return_code/@value", RESULT.VALUE)
+            RET = EKI_GetString(serviceNameSave[], "res/return_code/@message", RESULT.MSG[])
+            
+            IF(RESULT.VALUE < 0) THEN
+               RC_SETMSG("Execution failed")
+               RC_SETMSG(RESULT.MSG[])
+            ELSE
+               RC_SETMSG("Calibration saved.")
+            ENDIF
+            
+            RC_CLOSECONNECTION(serviceNameSave[], "req")
+         ELSE
+            RC_SETMSG("Calibration failed.")
+            RC_SETMSG(resMessage[])
+         ENDIF
+      END
+   ;ENDFOLD
+   
+;ENDFOLD (RC Functions)

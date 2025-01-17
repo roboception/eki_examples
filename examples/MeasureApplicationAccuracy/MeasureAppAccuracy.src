@@ -1,6 +1,6 @@
 &ACCESS RVO
 &REL 6
-&PARAM DISKPATH = KRC:\R1\Program\RC
+&PARAM DISKPATH = KRC:\R1\Program\RC\NewEkiExamples
 DEF  MeasureAppAccuracy ( )
 
    ; Robot
@@ -33,7 +33,6 @@ DEF  MeasureAppAccuracy ( )
        BAS (#INITMOV,0 )
      ;ENDFOLD (BASISTECH INI)
      ;FOLD USER INI
-       ;Make your modifications here
        $OV_PRO=10
      ;ENDFOLD (USER INI)
    ;ENDFOLD (INI)

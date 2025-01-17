@@ -1,0 +1,283 @@
+&ACCESS RVP
+&REL 118
+&PARAM EDITMASK = *
+&PARAM TEMPLATE = C:\KRC\Roboter\Template\vorgabe
+&PARAM DISKPATH = KRC:\R1\Program\RC\NewEkiExamples
+DEF MeasureExample()
+   ; MeasureExample
+   ; -------------
+   ; Demonstrates depth measurement capabilities using Roboception's Measure module.
+   ; The program:
+   ; 1. Configures measurement parameters (cell count, pose frame, etc.)
+   ; 2. Performs depth measurements
+   ; 3. Retrieves and processes measurement results including:
+   ;    - Cell-wise coverage and depth statistics
+   ;    - Overall coverage and depth statistics
+   ;    - Region of interest information
+   ; 4. Continuously loops for repeated measurements
+   ;
+   
+   DECL CHAR serviceName[64]
+   DECL EKI_Status RET
+   
+   ; Service name - same as the EKI service name
+   ; TODO: Change this to the correct service name - could be "sensor_a_pipeline_1_rc_measure-measure_depth"
+   serviceName[] = "rc_measure-measure_depth"
+   
+   ; Init cadmatch module and open connection to rc_cube
+   $FLAG[1] = FALSE
+   RC_SETMSG("Start")
+   
+   ;FOLD INI;%{PE}
+      ;FOLD BASISTECH INI
+         GLOBAL INTERRUPT DECL 3 WHEN $STOPMESS==TRUE DO IR_STOPM ( )
+         INTERRUPT ON 3
+         BAS (#INITMOV,0 )
+      ;ENDFOLD (BASISTECH INI)
+   ;ENDFOLD (INI)
+   
+   INTERRUPT DECL 89 WHEN $FLAG[998] DO RC_NOTIFYRECEIVED(1, 998)
+   INTERRUPT ON 89
+   
+   RC_INIT(serviceName[])
+   RC_OPENCONNECTION(serviceName[])
+   
+   LOOP
+      
+      ; Reset vision results
+      WAIT SEC 0
+      ResetData()
+      
+      ;****************************************
+      ; Mandatory application parameters:
+      ; ---------------------------------
+      ; Pose Frame, sensor or robot (external) [Default: "external"]
+      ; Cell Count, number of seaparte cells [Default: X 1, Y 1]
+      ; Robot pose, only mandatory for robot mounted camera
+      ;****************************************
+      RET = EKI_SetString(serviceName[], "req/args/pose_frame", "external")
+      RET = EKI_SetInt(serviceName[], "req/args/cell_count/@x", 1)
+      RET = EKI_SetInt(serviceName[], "req/args/cell_count/@y", 1)
+      ;RET = EKI_SetReal(serviceName[], "req/args/robot_pose/@X", 0.0)
+      ;RET = EKI_SetReal(serviceName[], "req/args/robot_pose/@Y", 0.0)
+      ;RET = EKI_SetReal(serviceName[], "req/args/robot_pose/@Z", 0.0)
+      ;RET = EKI_SetReal(serviceName[], "req/args/robot_pose/@A", 0.0)
+      ;RET = EKI_SetReal(serviceName[], "req/args/robot_pose/@B", 0.0)
+      ;RET = EKI_SetReal(serviceName[], "req/args/robot_pose/@C", 0.0)
+      
+      ;****************************************
+      ; Optional application parameters:
+      ; --------------------------------
+      ;RET = EKI_SetString(serviceName[], "req/args/data_acquisition_mode", "CAPTURE_NEW")
+      ;RET = EKI_SetInt(serviceName[], "req/args/region_of_interest_2d/@height", 0)
+      ;RET = EKI_SetInt(serviceName[], "req/args/region_of_interest_2d/@offset_x", 0)
+      ;RET = EKI_SetInt(serviceName[], "req/args/region_of_interest_2d/@offset_y", 0)
+      ;RET = EKI_SetInt(serviceName[], "req/args/region_of_interest_2d/@width", 0)
+      ;RET = EKI_SetString(serviceName[], "req/args/region_of_interest_2d_id", "Roi")      
+      
+      ; Send trigger and wait for vision results
+      RET = EKI_Send(serviceName[], "req")
+      RC_WAITFORRESULT(1)
+      RC_READRESULT(serviceName[])
+      
+      ; Error handling
+      IF (RETURNCODE.VALUE < 0) THEN
+         RC_SETMSG("Execution failed")
+         RC_SETMSG(RETURNCODE.MSG[])
+         HALT
+      ENDIF
+      
+      RC_SETMSG("Finish")
+      
+   ENDLOOP
+   
+   RC_CLOSECONNECTION(serviceName[], "req")
+   
+END
+
+; ---- Roboception Functions ----
+;FOLD ROBOCEPTION_FUNCTIONS
+   
+   ;FOLD RC_SETMSG
+      DEF RC_SETMSG(msg[]:IN)
+         DECL CHAR msg[]
+         DECL KrlMsgPar_T params[3]
+         RC_SETMSG_PARAM(msg[], params[])
+      END
+   ;ENDFOLD (RC_SETMSG)
+   
+   ;FOLD RC_SETMSG_PARAM
+      DEF RC_SETMSG_PARAM(msg[]:IN, params:OUT)
+         DECL CHAR msg[]
+         DECL KrlMsgPar_T params[]
+         
+         DECL KrlMsg_T name
+         DECL KrlMsgOpt_T options
+         DECL INT Handle, len, count
+         DECL EKrlMsgType Type
+         
+         name={modul[] "RC", nr 1, msg_txt[] " "}
+         
+         Type=#notify
+         
+         len=STRLEN(msg[])
+         IF len>0 THEN
+            IF len>80 THEN
+               len=80
+            ENDIF
+            FOR count=1 TO len
+               name.msg_txt[count]=msg[count]
+            ENDFOR
+         ELSE
+            name.msg_txt[]="parameter msg[] is missing"
+         ENDIF
+         
+         Handle=Set_KrlMsg(Type, name, params[], options)
+      END
+   ;ENDFOLD (RC_SETMSG_PARAM)
+   
+   ;FOLD RC_INIT
+      DEF RC_INIT(configFileName[]:IN)
+         DECL CHAR configFileName[]
+         DECL EKI_Status RET
+         RET=EKI_INIT(configFileName[])
+      END
+   ;ENDFOLD (RC_INIT)
+   
+   ;FOLD RC_OPENCONNECTION
+      DEF RC_OPENCONNECTION(configFileName[]:IN)
+         DECL CHAR configFileName[]
+         DECL EKI_Status RET
+         RET=EKI_Open(configFileName[])
+         EKI_CHECK(RET,#Quit)
+      END
+   ;ENDFOLD (RC_OPENCONNECTION)
+   
+   ;FOLD RC_CLOSECONNECTION
+      DEF RC_CLOSECONNECTION(configFileName[]:IN, strPlace[]:IN)
+         DECL CHAR configFileName[]
+         DECL CHAR strPlace[]
+         DECL EKI_Status RET
+         WAIT SEC 0
+         RET=EKI_Close(configFileName[])
+         RET=EKI_ClearBuffer(configFileName[], strPlace[])
+      END
+   ;ENDFOLD (RC_CLOSECONNECTION)
+   
+   ;FOLD RC_WAITFORRESULT
+      DEF RC_WAITFORRESULT(WaitFlag:IN)
+         DECL INT WaitFlag
+         
+         WAIT FOR $FLAG[WaitFlag] OR NOT $FLAG[RCEkiAliveFlagNo]
+         
+         ;Eki-connection has been closed
+         
+         IF(NOT $FLAG[RCEkiAliveFlagNo]) THEN
+            RC_SETMSG("EKI connection lost")
+         ENDIF
+         
+         $FLAG[WaitFlag] = FALSE
+         WAIT SEC 0
+      END
+   ;ENDFOLD (RC_WAITFORRESULT)
+   
+   ;FOLD RC_NOTIFYRECEIVED
+      DEF RC_NOTIFYRECEIVED(WAITFLAG:IN, EOFRESULFLAG:IN)
+         DECL INT WAITFLAG
+         DECL INT EOFRESULFLAG
+         $FLAG[EOFRESULFLAG]=FALSE
+         $FLAG[WAITFLAG]=TRUE
+      END
+   ;ENDFOLD (RC_NOTIFYRECEIVED)
+   
+   ;FOLD RC_READRESULT
+      DEF RC_READRESULT(configFileName[]:IN)
+         DECL CHAR configFileName[]
+         DECL RETURNCODE_T RESULT
+         DECL EKI_STATUS RET
+         
+         RESULT={VALUE 0, MSG[] "0"}
+         
+         ;Receive error codes
+         RET = EKI_GetInt(configFileName[], "res/return_code/@value", RESULT.VALUE)
+         RET = EKI_GetString(configFileName[], "res/return_code/@message", RESULT.MSG[])
+         RETURNCODE = RESULT
+         
+         ;Receive data
+         RET = EKI_GetInt(configFileName[], "res/cell_count/@x", cell_count_x)
+         RET = EKI_GetInt(configFileName[], "res/cell_count/@y", cell_count_y)
+         
+         RET = EKI_GetReal(configFileName[], "res/cells/le/coverage", cells_le_coverage)
+         RET = EKI_GetReal(configFileName[], "res/cells/le/max_z/@x", cells_le_max_z_x)
+         RET = EKI_GetReal(configFileName[], "res/cells/le/max_z/@y", cells_le_max_z_y)
+         RET = EKI_GetReal(configFileName[], "res/cells/le/max_z/@z", cells_le_max_z_z)
+         RET = EKI_GetReal(configFileName[], "res/cells/le/mean_z/@x", cells_le_mean_z_x)
+         RET = EKI_GetReal(configFileName[], "res/cells/le/mean_z/@y", cells_le_mean_z_y)
+         RET = EKI_GetReal(configFileName[], "res/cells/le/mean_z/@z", cells_le_mean_z_z)
+         RET = EKI_GetReal(configFileName[], "res/cells/le/min_z/@x", cells_le_min_z_x)
+         RET = EKI_GetReal(configFileName[], "res/cells/le/min_z/@y", cells_le_min_z_y)
+         RET = EKI_GetReal(configFileName[], "res/cells/le/min_z/@z", cells_le_min_z_z)
+         
+         RET = EKI_GetReal(configFileName[], "res/overall/@coverage", cells_overall_coverage)
+         RET = EKI_GetReal(configFileName[], "res/overall/max_z/@x", cells_overall_max_z_x)
+         RET = EKI_GetReal(configFileName[], "res/overall/max_z/@y", cells_overall_max_z_y)
+         RET = EKI_GetReal(configFileName[], "res/overall/max_z/@z", cells_overall_max_z_z)
+         RET = EKI_GetReal(configFileName[], "res/overall/mean_z/@x", cells_overall_mean_z_x)
+         RET = EKI_GetReal(configFileName[], "res/overall/mean_z/@y", cells_overall_mean_z_y)
+         RET = EKI_GetReal(configFileName[], "res/overall/mean_z/@z", cells_overall_mean_z_z)
+         RET = EKI_GetReal(configFileName[], "res/overall/min_z/@x", cells_overall_min_z_x)
+         RET = EKI_GetReal(configFileName[], "res/overall/min_z/@y", cells_overall_min_z_y)
+         RET = EKI_GetReal(configFileName[], "res/overall/min_z/@z", cells_overall_min_z_z)
+         
+         RET = EKI_GetString(configFileName[], "res/pose_frame", pose_frame[])
+         
+         RET = EKI_GetInt(configFileName[], "res/region_of_interest_2d/@height", roi_height)
+         RET = EKI_GetInt(configFileName[], "res/region_of_interest_2d/@offset_x", roi_offset_x)
+         RET = EKI_GetInt(configFileName[], "res/region_of_interest_2d/@offset_y", roi_offset_Y)
+         RET = EKI_GetInt(configFileName[], "res/region_of_interest_2d/@width", roi_width)     
+         
+         RET = EKI_ClearBuffer(configFileName[], "res")
+      END
+      
+   ;ENDFOLD (RC_READRESULT)
+   
+   ;FOLD (ResetData)
+      DEF ResetData()
+         DECL BOOL bret
+         
+         cell_count_x = 0
+         cell_count_y = 0
+         
+         cells_le_coverage = 0.0
+         cells_le_max_z_x = 0.0
+         cells_le_max_z_y = 0.0
+         cells_le_max_z_z = 0.0
+         cells_le_mean_z_x = 0.0
+         cells_le_mean_z_y = 0.0
+         cells_le_mean_z_z = 0.0
+         cells_le_min_z_x = 0.0
+         cells_le_min_z_y = 0.0
+         cells_le_min_z_z = 0.0
+         
+         cells_overall_coverage = 0.0
+         cells_overall_max_z_x = 0.0
+         cells_overall_max_z_y = 0.0
+         cells_overall_max_z_z = 0.0
+         cells_overall_mean_z_x = 0.0
+         cells_overall_mean_z_y = 0.0
+         cells_overall_mean_z_z = 0.0
+         cells_overall_min_z_x = 0.0
+         cells_overall_min_z_y = 0.0
+         cells_overall_min_z_z = 0.0
+         
+         bret = StrClear(pose_frame[])
+         pose_frame[] = " "
+         
+         roi_height = 0
+         roi_offset_x = 0
+         roi_offset_Y = 0
+         roi_width = 0
+         
+      END
+   ;ENDFOLD (ResetData)
+;ENDFOLD (ROBOCEPTION_FUNCTIONS)

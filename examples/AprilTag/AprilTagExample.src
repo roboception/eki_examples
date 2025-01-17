@@ -1,0 +1,260 @@
+&ACCESS RVP
+&REL 32
+&PARAM EDITMASK = *
+&PARAM TEMPLATE = C:\KRC\Roboter\Template\vorgabe
+DEF AprilTagExample()
+   ; AprilTagExample
+   ; --------------
+   ; Demonstrates AprilTag detection and robot positioning using Roboception's AprilTag module. The program:
+   ; 1. Configures detection parameters
+   ; 2. Performs AprilTag detection
+   ; 3. For each detected tag, moves robot to corresponding positions
+   ; 4. Returns to home position after completion
+   ;
+   
+   ; Service name - same as the EKI service name
+   ; TODO: Change this to the correct service name - could be "rc_april_tag_detect-detect"
+   serviceName[] = "rc_april_tag_detect-detect"
+   
+   ; Initialize robot and set up interrupts
+   ;FOLD INI;%{PE}
+      ;FOLD BASISTECH INI
+         GLOBAL INTERRUPT DECL 3 WHEN $STOPMESS==TRUE DO IR_STOPM ( )
+         INTERRUPT ON 3 
+         BAS (#INITMOV,0 )
+      ;ENDFOLD (BASISTECH INI)
+   ;ENDFOLD (INI)
+   
+   ; Initialize message received interrupt for EKI communication
+   INTERRUPT DECL 89 WHEN $FLAG[998] DO RC_NOTIFYRECEIVED(1, 998)
+   INTERRUPT ON 89
+   
+   ; Move robot to home position
+   MoveToHome()
+   
+   ; Initialize AprilTag detection and open connection to rc_cube
+   $FLAG[1] = FALSE
+   RC_SETMSG("Starting AprilTag detection")
+   
+   RC_INIT(serviceName[])
+   RC_OPENCONNECTION(serviceName[])
+   
+   ; Configure and perform detection
+   ConfigureDetection(serviceName[])
+   PerformDetection(serviceName[])
+   
+   ; Process results
+   IF DetectionSuccessful() THEN
+      ExecuteTagMovements()
+   ELSE
+      HandleDetectionFailure()
+   ENDIF
+   
+   ; Cleanup and close connections
+   RC_CLOSECONNECTION(serviceName[], "req")
+   RC_SETMSG("Detection finished")
+   
+   ; Return to home position
+   MoveToHome()
+END
+
+DEF ExecuteTagMovements()
+   DECL INT i
+   DECL FRAME AprilPose
+   
+   FOR i=1 TO NUMDETECTEDTAGS
+      AprilPose = DETECTEDTAGS[i]
+      MoveToTagPosition(AprilPose)
+   ENDFOR
+END
+
+DEF MoveToTagPosition(AprilPose:IN)
+   DECL FRAME AprilPose
+   DECL FRAME AboveAprilPose
+   AboveAprilPose = AprilPose
+   AboveAprilPose.Z = AprilPose.Z + 100
+   
+   SPTP AboveAprilPose WITH $VEL_AXIS[1] = SVEL_JOINT(100.0), $TOOL = STOOL2(FP1), $BASE = SBASE(FP1.BASE_NO), $IPO_MODE = SIPO_MODE(FP1.IPO_FRAME), $LOAD = SLOAD(FP1.TOOL_NO), $ACC_AXIS[1] = SACC_JOINT(PPDAT1), $APO = SAPO_PTP(PPDAT1), $GEAR_JERK[1] = SGEAR_JERK(PPDAT1), $COLLMON_TOL_PRO[1] = USE_CM_PRO_VALUES(0)
+END
+
+DEF MoveToHome()
+   ;FOLD SPTP HOME Vel=100 % DEFAULT
+      SPTP XHOME WITH $VEL_AXIS[1]= SVEL_JOINT(100), $TOOL= STOOL2(FHOME), $BASE= SBASE(FHOME.BASE_NO), $IPO_MODE= SIPO_MODE(FHOME.IPO_FRAME), $LOAD= SLOAD(FHOME.TOOL_NO), $ACC_AXIS[1]= SACC_JOINT(PDEFAULT), $GEAR_JERK[1]= SGEAR_JERK(PDEFAULT)
+   ;ENDFOLD
+END
+
+; ---- Roboception Functions ----
+;FOLD RC Functions
+   DEF ConfigureDetection(serviceName[]:IN)
+      ; Configures detection parameters for AprilTag detection
+      ;
+      ; @param serviceName[]: EKI configuration/service name
+      ;
+      DECL CHAR serviceName[]
+      DECL EKI_Status RET
+      
+      RET = EKI_SetString(serviceName[], "req/args/pose_frame", "external")
+      RET = EKI_SetFrame(serviceName[], "req/args/robot_pose", $POS_ACT_MES)
+   END
+   
+   DEF PerformDetection(serviceName[]:IN)
+      ; Performs AprilTag detection using configured parameters
+      ;
+      ; @param serviceName[]: EKI configuration/service name
+      ;
+      DECL CHAR serviceName[]
+      DECL EKI_Status RET
+      
+      RET = EKI_Send(serviceName[], "req")
+      RC_WAITFORRESULT(1)
+      RC_READRESULT(serviceName[])
+   END
+   
+   DEFFCT BOOL DetectionSuccessful()
+      ; Checks if AprilTag detection was successful
+      ;
+      ; @return TRUE if tags were detected, FALSE otherwise
+      ;
+      IF(RETURNCODE.VALUE < 0) THEN
+         RETURN FALSE
+      ENDIF
+      
+      IF NUMDETECTEDTAGS > 0 THEN
+         ShowDetectionResults()
+         RETURN TRUE
+      ENDIF
+      
+      RETURN FALSE
+   ENDFCT
+   
+   DEF ShowDetectionResults()
+      ; Displays information about detected AprilTags
+      ;
+      DECL INT i
+      DECL KrlMsgPar_T countPar[1]
+      DECL KrlMsgPar_T par[4]
+      
+      countPar[1] = {par_type #value, par_real 0}
+      countPar[1].par_real = NUMDETECTEDTAGS
+      RC_SETMSG_PARAM("Number of AprilTags detected: %1", countPar[])
+      
+      FOR i=1 TO NUMDETECTEDTAGS
+         par[1] = {par_type #value, par_real 0}
+         par[1].par_real = i
+         par[2] = {par_type #value, par_real 0}
+         par[2].par_real = DETECTEDTAGS[i].X
+         par[3] = {par_type #value, par_real 0}
+         par[3].par_real = DETECTEDTAGS[i].Y
+         par[4] = {par_type #value, par_real 0}
+         par[4].par_real = DETECTEDTAGS[i].Z
+         RC_SETMSG_PARAM("April Tag %1: X: %2, Y: %3, Z: %4", par[])
+      ENDFOR
+   END
+   
+   DEF HandleDetectionFailure()
+      ; Handles cases where AprilTag detection fails
+      ;
+      IF(RETURNCODE.VALUE < 0) THEN
+         RC_SETMSG("Execution failed")
+      ELSE
+         RC_SETMSG("No AprilTags detected")
+      ENDIF
+   END
+   
+   DEF RC_SETMSG(msg[]:IN)
+      DECL CHAR msg[]
+      DECL KrlMsgPar_T params[3]
+      
+      RC_SETMSG_PARAM(msg[], params[])
+   END
+   
+   DEF RC_SETMSG_PARAM(msg[]:IN, params[]:OUT)
+      DECL CHAR msg[]
+      DECL KrlMsgPar_T params[]
+      
+      DECL KrlMsg_T name
+      DECL KrlMsgOpt_T options
+      DECL INT Handle, len, count
+      DECL EKrlMsgType Type
+      
+      name={modul[] "RC", nr 1, msg_txt[] " "}
+      Type=#notify
+      
+      len=STRLEN(msg[])
+      IF len>0 THEN
+         IF len>80 THEN
+            len=80
+         ENDIF
+         FOR count=1 TO len
+            name.msg_txt[count]=msg[count]
+         ENDFOR
+      ELSE
+         name.msg_txt[]="parameter msg[] is missing"
+      ENDIF
+      
+      Handle=Set_KrlMsg(Type, name, params[], options)
+   END
+   
+   DEF RC_INIT(configFileName[]:IN)
+      DECL CHAR configFileName[]
+      DECL EKI_Status RET
+      RET=EKI_INIT(configFileName[])
+   END
+   
+   DEF RC_OPENCONNECTION(configFileName[]:IN)
+      DECL CHAR configFileName[]
+      DECL EKI_Status RET
+      RET=EKI_Open(configFileName[])
+      EKI_CHECK(RET,#Quit)
+   END
+   
+   DEF RC_CLOSECONNECTION(configFileName[]:IN, strPlace[]:IN)
+      DECL CHAR configFileName[]
+      DECL CHAR strPlace[]
+      DECL EKI_Status RET
+      WAIT SEC 0
+      RET=EKI_Close(configFileName[])
+      RET=EKI_ClearBuffer(configFileName[], strPlace[])
+   END
+   
+   DEF RC_WAITFORRESULT(WaitFlag:IN)
+      DECL INT WaitFlag
+      WAIT FOR $FLAG[WaitFlag] OR NOT $FLAG[RCEkiAliveFlagNo]
+      IF(NOT $FLAG[RCEkiAliveFlagNo]) THEN
+         RC_SETMSG("EKI connection lost")
+      ENDIF
+      $FLAG[WaitFlag] = FALSE
+   END
+   
+   DEF RC_NOTIFYRECEIVED(WAITFLAG:IN, EOFRESULFLAG:IN)
+      DECL INT WAITFLAG
+      DECL INT EOFRESULFLAG
+      $FLAG[EOFRESULFLAG]=FALSE
+      $FLAG[WAITFLAG]=TRUE
+   END
+   
+   DEF RC_READRESULT(configFileName[]:IN)
+      DECL CHAR configFileName[]
+      DECL RETURNCODE_T RESULT
+      DECL EKI_STATUS RET
+      DECL INT j
+      DECL FRAME POSE
+      
+      POSE = POSE_IDENT
+      RESULT={VALUE 0, MSG[] "0"}
+      
+      RET = EKI_GetInt(configFileName[], "res/return_code/@value", RESULT.VALUE)
+      RET = EKI_GetString(configFileName[], "res/return_code/@message", RESULT.MSG[])
+      RETURNCODE = RESULT
+      
+      RET = EKI_CheckBuffer(configFileName[], "res/tags/le/id")
+      NUMDETECTEDTAGS = RET.Buff
+      
+      FOR j=1 TO NUMDETECTEDTAGS
+         RET = EKI_GetFrame(configFileName[], "res/tags/le/pose", POSE)
+         DETECTEDTAGS[j] = POSE
+      ENDFOR
+      
+      RET = EKI_ClearBuffer(configFileName[], "res")
+   END
+;ENDFOLD (RC Functions)
