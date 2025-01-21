@@ -1,31 +1,16 @@
-&ACCESS RVO
+&ACCESS RVP
 &REL 6
 &PARAM DISKPATH = KRC:\R1\Program\RC\NewEkiExamples
-DEF  MeasureAppAccuracy ( )
-
-   ; Robot
-   DECL REAL rLinVelocityStd, rLinVelocitySlow, rPTPVelocityStd, rPTPVelocitySlow
-   
-   ; Common
-   DECL CHAR sModuleName[13]
-   DECL INT CUSTOM_TOOL_NO
-
-
+DEF  SystemAccuracyTest ( )
    ; EKI
-   DECL CHAR serviceName[50]
+   DECL CHAR serviceName[64]
    DECL EKI_Status RET
    DECL KrlMsgPar_T par[3]
    DECL FRAME GraspPose
    DECL FRAME PreGraspPose
-   DECL REAL preGraspOffsetZ ; in mm
 
-   rLinVelocityStd = 0.15 ; m/s 
-   rLinVelocitySlow = 0.05 ; m/s
-   rPTPVelocityStd = 30 ; %  
-   rPTPVelocitySlow = 1 ; %
+   ; Remove velocity initializations since they're in DAT file
    
-   preGraspOffsetZ = 40 ;in mm
-
    ;FOLD INI;%{PE}
      ;FOLD BASISTECH INI
        GLOBAL INTERRUPT DECL 3 WHEN $STOPMESS==TRUE DO IR_STOPM ( )
@@ -53,22 +38,11 @@ DEF  MeasureAppAccuracy ( )
    ; ----------------------------------------------------------------------------------------
    ;CUSTOM_TOOL_NO = $ACT_TOOL
 
-   serviceName[] = "rc_april_tag_detect-detect"
+   ; Initialize EKI connection with better error handling
+   serviceName[] = "new_lab_1_rc_april_tag_detect-detect"
    RC_INIT(serviceName[])
-   RC_OPENCONNECTION(serviceName[])
+   RC_OPENCONNECTION(serviceName[])   ; This will quit program if connection fails
    
-  ;If $TOOL is changed during program execution,
-  ;$LOAD must also be adapted accordingly. Otherwise
-  ;the robot will be moved with the wrong load data,
-  ;which might result in loss of warranty.
-
-   ; Set tool to flange to get correct $POS_ACT_MES
-   ; WARNING: Make sure that hand-eye-calibration was done with no tool (NULLFRAME / Flange)
-   ;          before enabling the following line!
-   ; ----------------------------------------------------------------------------------------
-   ;CUSTOM_TOOL_NO = $ACT_TOOL
-   ;$TOOL = $NULLFRAME
-
    RET = EKI_SetString(serviceName[], "req/args/pose_frame", "external")
    RET = EKI_SetFrame(serviceName[], "req/args/robot_pose", $POS_ACT_MES)
    RET = EKI_Send(serviceName[], "req")
@@ -88,12 +62,11 @@ DEF  MeasureAppAccuracy ( )
    ENDIF
    
    IF NUMDETECTEDITEMS == 2 THEN
-      GraspPose.X = DETECTEDITEMS[1].X + ((DETECTEDITEMS[2].X - DETECTEDITEMS[1].X) / 2)
-      GraspPose.Y = DETECTEDITEMS[1].Y + ((DETECTEDITEMS[2].Y - DETECTEDITEMS[1].Y) / 2)
-      GraspPose.Z = DETECTEDITEMS[1].Z + ((DETECTEDITEMS[2].Z - DETECTEDITEMS[1].Z) / 2)
-      GraspPose.A = DETECTEDITEMS[1].A
-      GraspPose.B = DETECTEDITEMS[1].B
-      GraspPose.C = DETECTEDITEMS[1].C
+      ; Calculate grasp pose - add better error checking
+      IF NOT CalculateGraspPoseFCT(GraspPose) THEN
+         RC_SETMSG("Failed to calculate grasp pose")
+         RETURN
+      ENDIF
       
       PreGraspPose = GraspPose
       PreGraspPose.Z = PreGraspPose.Z + preGraspOffsetZ
@@ -116,17 +89,14 @@ DEF  MeasureAppAccuracy ( )
       
       RC_SETMSG_PARAM("Target orientation: A: %1, B: %2, C: %3", par[])
       
-      SPTP PreGraspPose WITH $VEL_AXIS[1] = SVEL_JOINT(rPTPVelocityStd), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO)
-      
-      SLIN GraspPose WITH $VEL = SVEL_CP(rLinVelocitySlow, , lDatDefault), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO)
-      
-      RC_SETMSG("Target position reached.")
-      HALT
-      
-      SLIN PreGraspPose WITH $VEL = SVEL_CP(rLinVelocitySlow, , lDatDefault), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO)
+      ; Execute movement sequence with better error handling
+      IF NOT ExecuteGraspSequenceFCT(PreGraspPose, GraspPose) THEN
+         RC_SETMSG("Movement sequence failed")
+         RETURN
+      ENDIF
       
    ELSE
-      RC_SETMSG("Execution failed")
+      RC_SETMSG("Did not find 2 AprilTags")
    ENDIF     
 
    RC_CLOSECONNECTION(serviceName[], "req")
@@ -140,16 +110,68 @@ DEF  MeasureAppAccuracy ( )
 
 END
 
+; Helper function for grasp pose calculation using FCT
+DEFFCT BOOL CalculateGraspPoseFCT(GraspPose:OUT)
+   DECL FRAME GraspPose
+   
+   ; Validate input poses
+   IF NOT ValidateTagPoseFCT(DETECTEDITEMS[1]) OR NOT ValidateTagPoseFCT(DETECTEDITEMS[2]) THEN
+      RETURN FALSE
+   ENDIF
+   
+   ; Calculate midpoint between tags
+   GraspPose.X = DETECTEDITEMS[1].X + ((DETECTEDITEMS[2].X - DETECTEDITEMS[1].X) / 2)
+   GraspPose.Y = DETECTEDITEMS[1].Y + ((DETECTEDITEMS[2].Y - DETECTEDITEMS[1].Y) / 2)
+   GraspPose.Z = DETECTEDITEMS[1].Z + ((DETECTEDITEMS[2].Z - DETECTEDITEMS[1].Z) / 2)
+   
+   ; Use orientation from first tag
+   GraspPose.A = DETECTEDITEMS[1].A
+   GraspPose.B = DETECTEDITEMS[1].B
+   GraspPose.C = DETECTEDITEMS[1].C
+   
+   RETURN TRUE
+ENDFCT
 
-;FOLD RC_SETMSG
+; Helper function for movement sequence using FCT
+DEFFCT BOOL ExecuteGraspSequenceFCT(PreGraspPose:IN, GraspPose:IN)
+   DECL FRAME PreGraspPose, GraspPose
+   
+   ; Validate input poses
+   IF NOT ValidateTagPoseFCT(PreGraspPose) OR NOT ValidateTagPoseFCT(GraspPose) THEN
+      RETURN FALSE
+   ENDIF
+   
+   ; Execute movement sequence with proper tool and load data
+   SPTP PreGraspPose WITH $VEL_AXIS[1] = SVEL_JOINT(rPTPVelocityStd), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO)
+   SLIN GraspPose WITH $VEL = SVEL_CP(rLinVelocitySlow), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO)
+   
+   RC_SETMSG("Target position reached.")
+   HALT
+   
+   SLIN PreGraspPose WITH $VEL = SVEL_CP(rLinVelocitySlow), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO)
+   
+   RETURN TRUE
+ENDFCT
+
+; Helper function to validate pose
+DEFFCT BOOL ValidateTagPoseFCT(Pose:IN)
+   DECL FRAME Pose
+   
+   IF (Pose.X == 0) AND (Pose.Y == 0) AND (Pose.Z == 0) AND (Pose.A == 0) AND (Pose.B == 0) AND (Pose.C == 0) THEN
+      RETURN FALSE
+   ENDIF
+   
+   RETURN TRUE
+ENDFCT
+
+
 DEF RC_SETMSG(msg[]:IN)
   DECL CHAR msg[]
   DECL KrlMsgPar_T params[3]
+
   RC_SETMSG_PARAM(msg[], params[])
 END
-;ENDFOLD (RC_SETMSG)
 
-;FOLD RC_SETMSG_PARAM
 DEF RC_SETMSG_PARAM(msg[]:IN, params:OUT)
   DECL CHAR msg[]
   DECL KrlMsgPar_T params[]
@@ -166,10 +188,10 @@ DEF RC_SETMSG_PARAM(msg[]:IN, params:OUT)
   len=STRLEN(msg[])
   IF len>0 THEN
     IF len>80 THEN
-      len=80
+        len=80
     ENDIF
     FOR count=1 TO len
-      name.msg_txt[count]=msg[count]
+        name.msg_txt[count]=msg[count]
     ENDFOR
   ELSE
     name.msg_txt[]="parameter msg[] is missing"
@@ -177,7 +199,8 @@ DEF RC_SETMSG_PARAM(msg[]:IN, params:OUT)
 
   Handle=Set_KrlMsg(Type, name, params[], options)
 END
-;ENDFOLD (RC_SETMSG_PARAM)
+
+
 
 ;FOLD RC_INIT
 DEF RC_INIT(configFileName[]:IN)
@@ -189,10 +212,10 @@ END
 
 ;FOLD RC_OPENCONNECTION
 DEF RC_OPENCONNECTION(configFileName[]:IN)
-  DECL CHAR configFileName[]
-  DECL EKI_Status RET
-  RET=EKI_Open(configFileName[])
-  EKI_CHECK(RET,#Quit)
+   DECL CHAR configFileName[]
+   DECL EKI_STATUS RET
+   RET = EKI_Open(configFileName[])
+   EKI_CHECK(RET,#quit)    ; This will quit if connection fails
 END
 ;ENDFOLD (RC_OPENCONNECTION)
 
