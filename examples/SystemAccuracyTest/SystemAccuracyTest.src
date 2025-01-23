@@ -10,18 +10,17 @@ DEF SystemAccuracyTest()
    DECL FRAME PrePointPose
    DECL FRAME F_OFFSET
    
-
    ;FOLD INI;%{PE}
-     ;FOLD BASISTECH INI
-       GLOBAL INTERRUPT DECL 3 WHEN $STOPMESS==TRUE DO IR_STOPM()
-       INTERRUPT ON 3 
-       BAS (#INITMOV,0)
-     ;ENDFOLD (BASISTECH INI)
-     ;FOLD USER INI
-       $OV_PRO=10
-     ;ENDFOLD (USER INI)
+      ;FOLD BASISTECH INI
+         GLOBAL INTERRUPT DECL 3 WHEN $STOPMESS==TRUE DO IR_STOPM()
+         INTERRUPT ON 3 
+         BAS (#INITMOV,0)
+      ;ENDFOLD (BASISTECH INI)
+      ;FOLD USER INI
+         $OV_PRO=10
+      ;ENDFOLD (USER INI)
    ;ENDFOLD (INI)
-     
+   
    INTERRUPT DECL 89 WHEN $FLAG[998] DO RC_NOTIFYRECEIVED(1, 998)
    INTERRUPT ON 89
    
@@ -30,7 +29,7 @@ DEF SystemAccuracyTest()
    ;          before enabling the following line!
    ; ----------------------------------------------------------------------------------------
    ;CUSTOM_TOOL_NO = $ACT_TOOL
-
+   
    ; Initialize EKI connection with better error handling
    serviceName[] = "new_lab_1_rc_april_tag_detect-detect"
    RC_INIT(serviceName[])
@@ -39,11 +38,11 @@ DEF SystemAccuracyTest()
    LOOP
       ;FOLD SPTP HOME Vel=10 % DEFAULT ;%{PE}
          ;FOLD Parameters ;%{h}
-           ;Params IlfProvider=kukaroboter.basistech.inlineforms.movement.spline; Kuka.IsGlobalPoint=False; Kuka.PointName=HOME; Kuka.BlendingEnabled=False; Kuka.MoveDataPtpName=DEFAULT; Kuka.VelocityPtp=10; Kuka.VelocityFieldEnabled=True; Kuka.ColDetectFieldEnabled=True; Kuka.CurrentCDSetIndex=0; Kuka.MovementParameterFieldEnabled=True; IlfCommand=SPTP
+            ;Params IlfProvider=kukaroboter.basistech.inlineforms.movement.spline; Kuka.IsGlobalPoint=False; Kuka.PointName=HOME; Kuka.BlendingEnabled=False; Kuka.MoveDataPtpName=DEFAULT; Kuka.VelocityPtp=10; Kuka.VelocityFieldEnabled=True; Kuka.ColDetectFieldEnabled=True; Kuka.CurrentCDSetIndex=0; Kuka.MovementParameterFieldEnabled=True; IlfCommand=SPTP
          ;ENDFOLD
          SPTP XHOME WITH $VEL_AXIS[1] = SVEL_JOINT(rPTPVelocityStd), $TOOL = STOOL2(FHOME), $BASE = SBASE(FHOME.BASE_NO), $IPO_MODE = SIPO_MODE(FHOME.IPO_FRAME), $LOAD = SLOAD(FHOME.TOOL_NO), $ACC_AXIS[1] = SACC_JOINT(PDEFAULT), $APO = SAPO_PTP(PDEFAULT), $GEAR_JERK[1] = SGEAR_JERK(PDEFAULT), $COLLMON_TOL_PRO[1] = USE_CM_PRO_VALUES(0)
       ;ENDFOLD
-
+      
       RC_SETMSG("Moved to home position. Place test sheet in the workspace.")
       HALT
       
@@ -53,7 +52,7 @@ DEF SystemAccuracyTest()
       
       RC_WAITFORRESULT(1)
       RC_READTAGRESULT(serviceName[])
-
+      
       IF(RETURNCODE.VALUE < 0) THEN
          RC_SETMSG("Execution failed")
          HALT  ; Stop here to let user decide whether to continue
@@ -113,7 +112,7 @@ DEF SystemAccuracyTest()
       ENDIF     
       
    ENDLOOP
-
+   
    RC_CLOSECONNECTION(serviceName[], "req")
 END
 
@@ -149,13 +148,13 @@ DEFFCT BOOL ExecutePointSequenceFCT(PrePointPose:IN, PointPose:IN)
    ENDIF
    
    ; Execute movement sequence with proper tool and load data
-   SPTP PrePointPose WITH $VEL_AXIS[1] = SVEL_JOINT(rPTPVelocityStd), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO)
-   SLIN PointPose WITH $VEL = SVEL_CP(rLinVelocitySlow), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO)
+   SPTP PrePointPose WITH $VEL_AXIS[1] = SVEL_JOINT(rPTPVelocityStd), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO), $ACC_AXIS[1] = SACC_JOINT(pDatDefault), $APO = SAPO_PTP(pDatDefault), $GEAR_JERK[1] = SGEAR_JERK(pDatDefault)
+   SLIN PointPose WITH $VEL = SVEL_CP(rLinVelocitySlow), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO), $ACC = SACC_CP(lDatDefault), $ORI_TYPE = SORI_TYP(lDatDefault)
    
    RC_SETMSG("Target position reached. Measure deviation from crosshair. Continue to move home.")
    HALT
    
-   SLIN PrePointPose WITH $VEL = SVEL_CP(rLinVelocitySlow), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO)
+   SLIN PrePointPose WITH $VEL = SVEL_CP(rLinVelocitySlow), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO), $ACC = SACC_CP(lDatDefault), $ORI_TYPE = SORI_TYP(lDatDefault)
    
    RETURN TRUE
 ENDFCT
@@ -171,131 +170,128 @@ DEFFCT BOOL ValidateTagPoseFCT(Pose:IN)
    RETURN TRUE
 ENDFCT
 
-
 DEF RC_SETMSG(msg[]:IN)
-  DECL CHAR msg[]
-  DECL KrlMsgPar_T params[3]
-
-  RC_SETMSG_PARAM(msg[], params[])
+   DECL CHAR msg[]
+   DECL KrlMsgPar_T params[3]
+   
+   RC_SETMSG_PARAM(msg[], params[])
 END
 
 DEF RC_SETMSG_PARAM(msg[]:IN, params:OUT)
-  DECL CHAR msg[]
-  DECL KrlMsgPar_T params[]
-
-  DECL KrlMsg_T name
-  DECL KrlMsgOpt_T options
-  DECL INT Handle, len, count
-  DECL EKrlMsgType Type
-
-  name={modul[] "RC", nr 1, msg_txt[] " "}
-
-  Type=#notify
-
-  len=STRLEN(msg[])
-  IF len>0 THEN
-    IF len>80 THEN
-        len=80
-    ENDIF
-    FOR count=1 TO len
-        name.msg_txt[count]=msg[count]
-    ENDFOR
-  ELSE
-    name.msg_txt[]="parameter msg[] is missing"
-  ENDIF
-
-  Handle=Set_KrlMsg(Type, name, params[], options)
+   DECL CHAR msg[]
+   DECL KrlMsgPar_T params[]
+   
+   DECL KrlMsg_T name
+   DECL KrlMsgOpt_T options
+   DECL INT Handle, len, count
+   DECL EKrlMsgType Type
+   
+   name={modul[] "RC", nr 1, msg_txt[] " "}
+   
+   Type=#notify
+   
+   len=STRLEN(msg[])
+   IF len>0 THEN
+      IF len>80 THEN
+         len=80
+      ENDIF
+      FOR count=1 TO len
+         name.msg_txt[count]=msg[count]
+      ENDFOR
+   ELSE
+      name.msg_txt[]="parameter msg[] is missing"
+   ENDIF
+   
+   Handle=Set_KrlMsg(Type, name, params[], options)
 END
-
-
 
 ;FOLD RC_INIT
-DEF RC_INIT(configFileName[]:IN)
-  DECL CHAR configFileName[]
-  DECL EKI_Status RET
-  RET=EKI_INIT(configFileName[])
-END
+   DEF RC_INIT(configFileName[]:IN)
+      DECL CHAR configFileName[]
+      DECL EKI_Status RET
+      RET=EKI_INIT(configFileName[])
+   END
 ;ENDFOLD (RC_INIT)
 
 ;FOLD RC_OPENCONNECTION
-DEF RC_OPENCONNECTION(configFileName[]:IN)
-   DECL CHAR configFileName[]
-   DECL EKI_STATUS RET
-   RET = EKI_Open(configFileName[])
-   EKI_CHECK(RET,#quit)    ; This will quit if connection fails
-END
+   DEF RC_OPENCONNECTION(configFileName[]:IN)
+      DECL CHAR configFileName[]
+      DECL EKI_STATUS RET
+      RET = EKI_Open(configFileName[])
+      EKI_CHECK(RET,#quit)    ; This will quit if connection fails
+   END
 ;ENDFOLD (RC_OPENCONNECTION)
 
 ;FOLD RC_CLOSECONNECTION
-DEF RC_CLOSECONNECTION(configFileName[]:IN, strPlace[]:IN)
-  DECL CHAR configFileName[]
-  DECL CHAR strPlace[]
-  DECL EKI_Status RET
-  WAIT SEC 0
-  RET=EKI_Close(configFileName[])
-  RET=EKI_ClearBuffer(configFileName[], strPlace[])
-END
+   DEF RC_CLOSECONNECTION(configFileName[]:IN, strPlace[]:IN)
+      DECL CHAR configFileName[]
+      DECL CHAR strPlace[]
+      DECL EKI_Status RET
+      WAIT SEC 0
+      RET=EKI_Close(configFileName[])
+      RET=EKI_ClearBuffer(configFileName[], strPlace[])
+   END
 ;ENDFOLD (RC_CLOSECONNECTION)
 
 ;FOLD RC_WAITFORRESULT
-DEF RC_WAITFORRESULT(WaitFlag:IN)
-  DECL INT WaitFlag
-
-  WAIT FOR $FLAG[WaitFlag] OR NOT $FLAG[RCEkiAliveFlagNo]
-
-  ;Eki-connection has been closed 
-  IF(NOT $FLAG[RCEkiAliveFlagNo]) THEN
-    RC_SETMSG("EKI connection lost")
-  ENDIF
-
-  $FLAG[WaitFlag] = FALSE
-END
+   DEF RC_WAITFORRESULT(WaitFlag:IN)
+      DECL INT WaitFlag
+      
+      WAIT FOR $FLAG[WaitFlag] OR NOT $FLAG[RCEkiAliveFlagNo]
+      
+      ;Eki-connection has been closed 
+      IF(NOT $FLAG[RCEkiAliveFlagNo]) THEN
+         RC_SETMSG("EKI connection lost")
+      ENDIF
+      
+      $FLAG[WaitFlag] = FALSE
+   END
 ;ENDFOLD (RC_WAITFORRESULT)
 
 ;FOLD RC_NOTIFYRECEIVED
-DEF RC_NOTIFYRECEIVED(WAITFLAG:IN, EOFRESULFLAG:IN)
-  DECL INT WAITFLAG
-  DECL INT EOFRESULFLAG
-  $FLAG[EOFRESULFLAG]=FALSE
-  $FLAG[WAITFLAG]=TRUE
-END
+   DEF RC_NOTIFYRECEIVED(WAITFLAG:IN, EOFRESULFLAG:IN)
+      DECL INT WAITFLAG
+      DECL INT EOFRESULFLAG
+      $FLAG[EOFRESULFLAG]=FALSE
+      $FLAG[WAITFLAG]=TRUE
+   END
 ;ENDFOLD (RC_NOTIFYRECEIVED)
 
 ;FOLD RC_READTAGRESULT
-DEF RC_READTAGRESULT(configFileName[]:IN)
-  DECL CHAR configFileName[]
-  DECL CHAR tagId[80]
-  DECL RETURNCODE_T RESULT
-  DECL EKI_STATUS RET
-  DECL INT j
-  DECL FRAME POSE
-
-  POSE = POSE_IDENT
-  tagId[]="-"
-  RESULT={VALUE 0, MSG[] "0"}
-
-  RET = EKI_GetInt(configFileName[], "res/return_code/@value", RESULT.VALUE)
-  RET = EKI_GetString(configFileName[], "res/return_code/@message", RESULT.MSG[])
-  RETURNCODE = RESULT
-
-  RET = EKI_CheckBuffer(configFileName[], "res/tags/le/instance_id")
-  NUMDETECTEDITEMS = RET.Buff
-  for j=1 to NUMDETECTEDITEMS
-   
-   RET = EKI_GetString(configFileName[], "res/tags/le/id", tagId[])
- 
-   IF STRCOMP(tagId[], "36h11_1", (#CASE_SENS)) THEN
-      RET = EKI_GetFrame(configFileName[], "res/tags/le/pose", POSE)
-      DETECTEDITEMS[1] = POSE
-   ENDIF
-   
-   IF STRCOMP(tagId[], "36h11_0", (#CASE_SENS)) THEN
-      RET = EKI_GetFrame(configFileName[], "res/tags/le/pose", POSE)
-      DETECTEDITEMS[2] = POSE
-   ENDIF    
-    
-  endfor
-
-  RET = EKI_ClearBuffer(configFileName[], "res")
-END
+   DEF RC_READTAGRESULT(configFileName[]:IN)
+      DECL CHAR configFileName[]
+      DECL CHAR tagId[80]
+      DECL RETURNCODE_T RESULT
+      DECL EKI_STATUS RET
+      DECL INT j
+      DECL FRAME POSE
+      
+      POSE = POSE_IDENT
+      tagId[]="-"
+      RESULT={VALUE 0, MSG[] "0"}
+      
+      RET = EKI_GetInt(configFileName[], "res/return_code/@value", RESULT.VALUE)
+      RET = EKI_GetString(configFileName[], "res/return_code/@message", RESULT.MSG[])
+      RETURNCODE = RESULT
+      
+      RET = EKI_CheckBuffer(configFileName[], "res/tags/le/instance_id")
+      NUMDETECTEDITEMS = RET.Buff
+      for j=1 to NUMDETECTEDITEMS
+         
+         RET = EKI_GetString(configFileName[], "res/tags/le/id", tagId[])
+         
+         IF STRCOMP(tagId[], "36h11_1", (#CASE_SENS)) THEN
+            RET = EKI_GetFrame(configFileName[], "res/tags/le/pose", POSE)
+            DETECTEDITEMS[1] = POSE
+         ENDIF
+         
+         IF STRCOMP(tagId[], "36h11_0", (#CASE_SENS)) THEN
+            RET = EKI_GetFrame(configFileName[], "res/tags/le/pose", POSE)
+            DETECTEDITEMS[2] = POSE
+         ENDIF    
+         
+      endfor
+      
+      RET = EKI_ClearBuffer(configFileName[], "res")
+   END
 ;ENDFOLD (RC_READTAGRESULT)
