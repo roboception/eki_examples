@@ -1,21 +1,21 @@
 &ACCESS RVP
 &REL 6
 &PARAM DISKPATH = KRC:\R1\Program\RC\NewEkiExamples
-DEF  SystemAccuracyTest ( )
+DEF SystemAccuracyTest()
    ; EKI
    DECL CHAR serviceName[64]
    DECL EKI_Status RET
    DECL KrlMsgPar_T par[3]
-   DECL FRAME GraspPose
-   DECL FRAME PreGraspPose
-
-   ; Remove velocity initializations since they're in DAT file
+   DECL FRAME PointPose
+   DECL FRAME PrePointPose
+   DECL FRAME F_OFFSET
    
+
    ;FOLD INI;%{PE}
      ;FOLD BASISTECH INI
-       GLOBAL INTERRUPT DECL 3 WHEN $STOPMESS==TRUE DO IR_STOPM ( )
+       GLOBAL INTERRUPT DECL 3 WHEN $STOPMESS==TRUE DO IR_STOPM()
        INTERRUPT ON 3 
-       BAS (#INITMOV,0 )
+       BAS (#INITMOV,0)
      ;ENDFOLD (BASISTECH INI)
      ;FOLD USER INI
        $OV_PRO=10
@@ -24,13 +24,6 @@ DEF  SystemAccuracyTest ( )
      
    INTERRUPT DECL 89 WHEN $FLAG[998] DO RC_NOTIFYRECEIVED(1, 998)
    INTERRUPT ON 89
-   
-   ;FOLD SPTP HOME Vel=10 % DEFAULT ;%{PE}
-      ;FOLD Parameters ;%{h}
-        ;Params IlfProvider=kukaroboter.basistech.inlineforms.movement.spline; Kuka.IsGlobalPoint=False; Kuka.PointName=HOME; Kuka.BlendingEnabled=False; Kuka.MoveDataPtpName=DEFAULT; Kuka.VelocityPtp=10; Kuka.VelocityFieldEnabled=True; Kuka.ColDetectFieldEnabled=True; Kuka.CurrentCDSetIndex=0; Kuka.MovementParameterFieldEnabled=True; IlfCommand=SPTP
-      ;ENDFOLD
-      SPTP XHOME WITH $VEL_AXIS[1] = SVEL_JOINT(rPTPVelocityStd), $TOOL = STOOL2(FHOME), $BASE = SBASE(FHOME.BASE_NO), $IPO_MODE = SIPO_MODE(FHOME.IPO_FRAME), $LOAD = SLOAD(FHOME.TOOL_NO), $ACC_AXIS[1] = SACC_JOINT(PDEFAULT), $APO = SAPO_PTP(PDEFAULT), $GEAR_JERK[1] = SGEAR_JERK(PDEFAULT), $COLLMON_TOL_PRO[1] = USE_CM_PRO_VALUES(0)
-   ;ENDFOLD
    
    ; Set custom tool no to the currently used tool
    ; WARNING: Make sure that hand-eye-calibration was done with no tool (NULLFRAME / Flange)
@@ -43,76 +36,90 @@ DEF  SystemAccuracyTest ( )
    RC_INIT(serviceName[])
    RC_OPENCONNECTION(serviceName[])   ; This will quit program if connection fails
    
-   RET = EKI_SetString(serviceName[], "req/args/pose_frame", "external")
-   RET = EKI_SetFrame(serviceName[], "req/args/robot_pose", $POS_ACT_MES)
-   RET = EKI_Send(serviceName[], "req")
-   
-   ; Switch tool back agian to predefined tool
-   ; WARNING: Make sure that hand-eye-calibration was done with no tool (NULLFRAME / Flange)
-   ;          before enabling the following line!
-   ; ----------------------------------------------------------------------------------------
-   ;$TOOL = TOOL_DATA[CUSTOM_TOOL_NO]
-   ;$LOAD = LOAD_DATA[CUSTOM_TOOL_NO]
+   LOOP
+      ;FOLD SPTP HOME Vel=10 % DEFAULT ;%{PE}
+         ;FOLD Parameters ;%{h}
+           ;Params IlfProvider=kukaroboter.basistech.inlineforms.movement.spline; Kuka.IsGlobalPoint=False; Kuka.PointName=HOME; Kuka.BlendingEnabled=False; Kuka.MoveDataPtpName=DEFAULT; Kuka.VelocityPtp=10; Kuka.VelocityFieldEnabled=True; Kuka.ColDetectFieldEnabled=True; Kuka.CurrentCDSetIndex=0; Kuka.MovementParameterFieldEnabled=True; IlfCommand=SPTP
+         ;ENDFOLD
+         SPTP XHOME WITH $VEL_AXIS[1] = SVEL_JOINT(rPTPVelocityStd), $TOOL = STOOL2(FHOME), $BASE = SBASE(FHOME.BASE_NO), $IPO_MODE = SIPO_MODE(FHOME.IPO_FRAME), $LOAD = SLOAD(FHOME.TOOL_NO), $ACC_AXIS[1] = SACC_JOINT(PDEFAULT), $APO = SAPO_PTP(PDEFAULT), $GEAR_JERK[1] = SGEAR_JERK(PDEFAULT), $COLLMON_TOL_PRO[1] = USE_CM_PRO_VALUES(0)
+      ;ENDFOLD
 
-   RC_WAITFORRESULT(1)
-   RC_READTAGRESULT(serviceName[])
+      RC_SETMSG("Moved to home position. Place test sheet in the workspace.")
+      HALT
+      
+      RET = EKI_SetString(serviceName[], "req/args/pose_frame", "external")
+      RET = EKI_SetFrame(serviceName[], "req/args/robot_pose", $POS_ACT_MES)
+      RET = EKI_Send(serviceName[], "req")
+      
+      RC_WAITFORRESULT(1)
+      RC_READTAGRESULT(serviceName[])
 
-   IF(RETURNCODE.VALUE < 0) THEN
-      RC_SETMSG("Execution failed")
-   ENDIF
-   
-   IF NUMDETECTEDITEMS == 2 THEN
-      ; Calculate grasp pose - add better error checking
-      IF NOT CalculateGraspPoseFCT(GraspPose) THEN
-         RC_SETMSG("Failed to calculate grasp pose")
-         RETURN
+      IF(RETURNCODE.VALUE < 0) THEN
+         RC_SETMSG("Execution failed")
+         HALT  ; Stop here to let user decide whether to continue
+         CONTINUE  ; Skip rest of loop and start over
       ENDIF
       
-      PreGraspPose = GraspPose
-      PreGraspPose.Z = PreGraspPose.Z + preGraspOffsetZ
+      IF NUMDETECTEDITEMS == 2 THEN
+         ; Calculate point pose - add better error checking
+         IF NOT CalculatePointPoseFCT(PointPose) THEN
+            RC_SETMSG("Failed to calculate point pose")
+            HALT  ; Stop here to let user decide whether to continue
+            CONTINUE  ; Skip rest of loop and start over
+         ENDIF
+         
+         ; Calculate pre-point pose using frame offset
+         F_OFFSET = $NULLFRAME
+         F_OFFSET.Z = -preGraspOffsetZ
+         PrePointPose = PointPose:F_OFFSET
+         
+         ; Log positions
+         par[1] = {par_type #value, par_real 0}
+         par[1].par_real = PrePointPose.X
+         par[2] = {par_type #value, par_real 0}
+         par[2].par_real = PrePointPose.Y
+         par[3] = {par_type #value, par_real 0}
+         par[3].par_real = PrePointPose.Z
+         
+         RC_SETMSG_PARAM("Target position: X: %1, Y: %2, Z: %3", par[])
+         
+         par[1] = {par_type #value, par_real 0}
+         par[1].par_real = PrePointPose.A
+         par[2] = {par_type #value, par_real 0}
+         par[2].par_real = PrePointPose.B
+         par[3] = {par_type #value, par_real 0}
+         par[3].par_real = PrePointPose.C
+         
+         RC_SETMSG_PARAM("Target orientation: A: %1, B: %2, C: %3", par[])
+         
+         ; Execute movement sequence with better error handling
+         IF NOT ExecutePointSequenceFCT(PrePointPose, PointPose) THEN
+            RC_SETMSG("Movement sequence failed")
+            HALT  ; Stop here to let user decide whether to continue
+            CONTINUE  ; Skip rest of loop and start over
+         ENDIF
+         
+         ;FOLD SPTP HOME Vel=100 % DEFAULT ;%{PE}
+            ;FOLD Parameters ;%{h}
+               ;Params IlfProvider=kukaroboter.basistech.inlineforms.movement.spline; Kuka.IsGlobalPoint=False; Kuka.PointName=HOME; Kuka.BlendingEnabled=False; Kuka.MoveDataPtpName=DEFAULT; Kuka.VelocityPtp=100; Kuka.VelocityFieldEnabled=True; Kuka.CurrentCDSetIndex=0; Kuka.MovementParameterFieldEnabled=True; IlfCommand=SPTP
+            ;ENDFOLD
+            SPTP XHOME WITH $VEL_AXIS[1] = SVEL_JOINT(rPTPVelocityStd), $TOOL = STOOL2(FHOME), $BASE = SBASE(FHOME.BASE_NO), $IPO_MODE = SIPO_MODE(FHOME.IPO_FRAME), $LOAD = SLOAD(FHOME.TOOL_NO), $ACC_AXIS[1] = SACC_JOINT(PDEFAULT), $APO = SAPO_PTP(PDEFAULT), $GEAR_JERK[1] = SGEAR_JERK(PDEFAULT), $COLLMON_TOL_PRO[1] = USE_CM_PRO_VALUES(0)
+         ;ENDFOLD
+         
+      ELSE
+         RC_SETMSG("Did not find 2 AprilTags")
+         HALT  ; Stop here to let user decide whether to continue
+         CONTINUE  ; Skip rest of loop and start over
+      ENDIF     
       
-      par[1] = {par_type #value, par_real 0}
-      par[1].par_real = PreGraspPose.X
-      par[2] = {par_type #value, par_real 0}
-      par[2].par_real = PreGraspPose.Y
-      par[3] = {par_type #value, par_real 0}
-      par[3].par_real = PreGraspPose.Z
-      
-      RC_SETMSG_PARAM("Target position: X: %1, Y: %2, Z: %3", par[])
-      
-      par[1] = {par_type #value, par_real 0}
-      par[1].par_real = PreGraspPose.A
-      par[2] = {par_type #value, par_real 0}
-      par[2].par_real = PreGraspPose.B
-      par[3] = {par_type #value, par_real 0}
-      par[3].par_real = PreGraspPose.C
-      
-      RC_SETMSG_PARAM("Target orientation: A: %1, B: %2, C: %3", par[])
-      
-      ; Execute movement sequence with better error handling
-      IF NOT ExecuteGraspSequenceFCT(PreGraspPose, GraspPose) THEN
-         RC_SETMSG("Movement sequence failed")
-         RETURN
-      ENDIF
-      
-   ELSE
-      RC_SETMSG("Did not find 2 AprilTags")
-   ENDIF     
+   ENDLOOP
 
    RC_CLOSECONNECTION(serviceName[], "req")
-   
-   ;FOLD SPTP HOME Vel=100 % DEFAULT ;%{PE}
-   ;FOLD Parameters ;%{h}
-   ;Params IlfProvider=kukaroboter.basistech.inlineforms.movement.spline; Kuka.IsGlobalPoint=False; Kuka.PointName=HOME; Kuka.BlendingEnabled=False; Kuka.MoveDataPtpName=DEFAULT; Kuka.VelocityPtp=100; Kuka.VelocityFieldEnabled=True; Kuka.CurrentCDSetIndex=0; Kuka.MovementParameterFieldEnabled=True; IlfCommand=SPTP
-   ;ENDFOLD
-   SPTP XHOME WITH $VEL_AXIS[1] = SVEL_JOINT(rPTPVelocityStd), $TOOL = STOOL2(FHOME), $BASE = SBASE(FHOME.BASE_NO), $IPO_MODE = SIPO_MODE(FHOME.IPO_FRAME), $LOAD = SLOAD(FHOME.TOOL_NO), $ACC_AXIS[1] = SACC_JOINT(PDEFAULT), $APO = SAPO_PTP(PDEFAULT), $GEAR_JERK[1] = SGEAR_JERK(PDEFAULT), $COLLMON_TOL_PRO[1] = USE_CM_PRO_VALUES(0)
-   ;ENDFOLD
-
 END
 
 ; Helper function for grasp pose calculation using FCT
-DEFFCT BOOL CalculateGraspPoseFCT(GraspPose:OUT)
-   DECL FRAME GraspPose
+DEFFCT BOOL CalculatePointPoseFCT(PointPose:OUT)
+   DECL FRAME PointPose
    
    ; Validate input poses
    IF NOT ValidateTagPoseFCT(DETECTEDITEMS[1]) OR NOT ValidateTagPoseFCT(DETECTEDITEMS[2]) THEN
@@ -120,35 +127,35 @@ DEFFCT BOOL CalculateGraspPoseFCT(GraspPose:OUT)
    ENDIF
    
    ; Calculate midpoint between tags
-   GraspPose.X = DETECTEDITEMS[1].X + ((DETECTEDITEMS[2].X - DETECTEDITEMS[1].X) / 2)
-   GraspPose.Y = DETECTEDITEMS[1].Y + ((DETECTEDITEMS[2].Y - DETECTEDITEMS[1].Y) / 2)
-   GraspPose.Z = DETECTEDITEMS[1].Z + ((DETECTEDITEMS[2].Z - DETECTEDITEMS[1].Z) / 2)
+   PointPose.X = DETECTEDITEMS[1].X + ((DETECTEDITEMS[2].X - DETECTEDITEMS[1].X) / 2)
+   PointPose.Y = DETECTEDITEMS[1].Y + ((DETECTEDITEMS[2].Y - DETECTEDITEMS[1].Y) / 2)
+   PointPose.Z = DETECTEDITEMS[1].Z + ((DETECTEDITEMS[2].Z - DETECTEDITEMS[1].Z) / 2)
    
    ; Use orientation from first tag
-   GraspPose.A = DETECTEDITEMS[1].A
-   GraspPose.B = DETECTEDITEMS[1].B
-   GraspPose.C = DETECTEDITEMS[1].C
+   PointPose.A = DETECTEDITEMS[1].A
+   PointPose.B = DETECTEDITEMS[1].B
+   PointPose.C = DETECTEDITEMS[1].C
    
    RETURN TRUE
 ENDFCT
 
 ; Helper function for movement sequence using FCT
-DEFFCT BOOL ExecuteGraspSequenceFCT(PreGraspPose:IN, GraspPose:IN)
-   DECL FRAME PreGraspPose, GraspPose
+DEFFCT BOOL ExecutePointSequenceFCT(PrePointPose:IN, PointPose:IN)
+   DECL FRAME PrePointPose, PointPose
    
    ; Validate input poses
-   IF NOT ValidateTagPoseFCT(PreGraspPose) OR NOT ValidateTagPoseFCT(GraspPose) THEN
+   IF NOT ValidateTagPoseFCT(PrePointPose) OR NOT ValidateTagPoseFCT(PointPose) THEN
       RETURN FALSE
    ENDIF
    
    ; Execute movement sequence with proper tool and load data
-   SPTP PreGraspPose WITH $VEL_AXIS[1] = SVEL_JOINT(rPTPVelocityStd), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO)
-   SLIN GraspPose WITH $VEL = SVEL_CP(rLinVelocitySlow), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO)
+   SPTP PrePointPose WITH $VEL_AXIS[1] = SVEL_JOINT(rPTPVelocityStd), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO)
+   SLIN PointPose WITH $VEL = SVEL_CP(rLinVelocitySlow), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO)
    
-   RC_SETMSG("Target position reached.")
+   RC_SETMSG("Target position reached. Measure deviation from crosshair. Continue to move home.")
    HALT
    
-   SLIN PreGraspPose WITH $VEL = SVEL_CP(rLinVelocitySlow), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO)
+   SLIN PrePointPose WITH $VEL = SVEL_CP(rLinVelocitySlow), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO)
    
    RETURN TRUE
 ENDFCT
