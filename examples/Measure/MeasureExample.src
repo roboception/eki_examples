@@ -19,6 +19,7 @@ DEF MeasureExample()
    
    DECL CHAR serviceName[64]
    DECL EKI_Status RET
+   DECL FRAME flangePose
    
    ; Service name - same as the EKI service name
    ; TODO: Change this to the correct service name - could be "sensor_a_pipeline_1_rc_measure-measure_depth"
@@ -58,12 +59,9 @@ DEF MeasureExample()
       RET = EKI_SetString(serviceName[], "req/args/pose_frame", "external")
       RET = EKI_SetInt(serviceName[], "req/args/cell_count/@x", 1)
       RET = EKI_SetInt(serviceName[], "req/args/cell_count/@y", 1)
-      ;RET = EKI_SetReal(serviceName[], "req/args/robot_pose/@X", 0.0)
-      ;RET = EKI_SetReal(serviceName[], "req/args/robot_pose/@Y", 0.0)
-      ;RET = EKI_SetReal(serviceName[], "req/args/robot_pose/@Z", 0.0)
-      ;RET = EKI_SetReal(serviceName[], "req/args/robot_pose/@A", 0.0)
-      ;RET = EKI_SetReal(serviceName[], "req/args/robot_pose/@B", 0.0)
-      ;RET = EKI_SetReal(serviceName[], "req/args/robot_pose/@C", 0.0)
+      
+      flangePose = $POS_ACT_MES : INV_POS($TOOL)
+      RET = EKI_SetFrame(serviceName[], "req/args/robot_pose", flangePose)
       
       ;****************************************
       ; Optional application parameters:

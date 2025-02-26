@@ -92,9 +92,12 @@ END
       ;
       DECL CHAR serviceName[]
       DECL EKI_Status RET
+      DECL FRAME flangePose
+      
+      flangePose = $POS_ACT_MES : INV_POS($TOOL)
       
       RET = EKI_SetString(serviceName[], "req/args/pose_frame", "external")
-      RET = EKI_SetFrame(serviceName[], "req/args/robot_pose", $POS_ACT_MES)
+      RET = EKI_SetFrame(serviceName[], "req/args/robot_pose", flangePose)
    END
    
    DEF PerformDetection(serviceName[]:IN)

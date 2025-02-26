@@ -197,10 +197,13 @@ END
       DECL REAL PRE_GRASP_OFFSET_X
       DECL REAL PRE_GRASP_OFFSET_Y
       DECL REAL PRE_GRASP_OFFSET_Z
+      DECL FRAME flangePose
+      
+      flangePose = $POS_ACT_MES : INV_POS($TOOL)
       
       RET = EKI_SetString(serviceNameDetect[], "req/args/template_id", TEMPLATE_ID[])
       RET = EKI_SetString(serviceNameDetect[], "req/args/pose_frame", POSE_FRAME[])
-      RET = EKI_SetFrame(serviceNameDetect[], "req/args/robot_pose", $POS_ACT_MES)
+      RET = EKI_SetFrame(serviceNameDetect[], "req/args/robot_pose", flangePose)
       
       IF LOAD_CARRIER_ID[1] <> " " THEN
          RET = EKI_SetString(serviceNameDetect[], "req/args/load_carrier_id", LOAD_CARRIER_ID[])

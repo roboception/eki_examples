@@ -319,12 +319,7 @@ END
          
          RC_OPENCONNECTION(serviceNameSetPose[])
          
-         pose.X = $POS_ACT_MES.X
-         pose.Y = $POS_ACT_MES.Y
-         pose.Z = $POS_ACT_MES.Z
-         pose.A = $POS_ACT_MES.A
-         pose.B = $POS_ACT_MES.B
-         pose.C = $POS_ACT_MES.C
+         pose = $POS_ACT_MES : INV_POS($TOOL)
          
          RET = EKI_SetFrame(serviceNameSetPose[], "req/args/pose", pose)
          RET = EKI_SetInt(serviceNameSetPose[], "req/args/slot", slot)

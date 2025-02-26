@@ -214,10 +214,14 @@ END
          DECL CHAR ROI_ID[]
          DECL REAL SUCTION_LENGTH, SUCTION_WIDTH
          DECL EKI_STATUS RET
+         DECL FRAME flangePose
+         
+         flangePose = $POS_ACT_MES : INV_POS($TOOL)
          
          RET = EKI_SETREAL(serviceName[], "req/args/suction_surface_length", SUCTION_LENGTH)
          RET = EKI_SETREAL(serviceName[], "req/args/suction_surface_width", SUCTION_WIDTH)
          RET = EKI_SETSTRING(serviceName[], "req/args/pose_frame", POSE_FRAME[])
+         RET = EKI_SETFRAME(serviceName[], "req/args/robot_pose", flangePose)
          
          IF ITEM_TYPE[1] <> " " THEN
             RET = EKI_SETSTRING(serviceName[], "req/args/item_models/le/type", ITEM_TYPE[])
