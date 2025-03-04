@@ -1,5 +1,20 @@
 &ACCESS RVO
 DEF HandEyeCalibrationExamp()
+   ;------------------------------------------------------------------------
+   ; Hand-Eye Calibration Example for Roboception rc_visard/rc_cube
+   ;
+   ; This program performs an 8-pose hand-eye calibration routine to align
+   ; the camera and robot coordinate systems. The robot will move to 8 different
+   ; positions where the calibration grid is visible to the camera.
+   ;
+   ; IMPORTANT: 
+   ; 1. The service names MUST match exactly with your EKI XML configuration files
+   ; 2. Modify only the parameters in this section before running the program
+   ; 3. After modifying this file, open the .dat file (preferably in WorkVisual)
+   ;    and teach the 8 poses (XP1-XP8) where the calibration grid is visible
+   ; 4. Define the correct FDAT FP1 - use tool flange if only the calibration grid is 
+   ;    mounted, or use the gripper if the calibration grid is mounted alongside it
+   ;------------------------------------------------------------------------
    DECL CHAR serviceNameReset[64]
    DECL CHAR serviceNameParams[64]
    DECL CHAR serviceNameSetPose[64]
@@ -8,9 +23,8 @@ DEF HandEyeCalibrationExamp()
    DECL REAL GRID_WIDTH
    DECL REAL GRID_HEIGHT
    DECL BOOL ROBOT_MOUNTED
-   
-   ; Service names - same as the EKI service names
-   ; TODO: Change these to the correct service names - could be "rc_hand_eye_calibration-reset_calibration"
+   ;------------------------------------------------------------------------
+   ; Service names - MUST match exactly with your EKI XML configuration files
    serviceNameReset[] = "rc_hand_eye_calibration-reset_calibration"
    serviceNameParams[] = "rc_hand_eye_calibration-parameters"
    serviceNameSetPose[] = "rc_hand_eye_calibration-set_pose"
@@ -21,6 +35,10 @@ DEF HandEyeCalibrationExamp()
    GRID_WIDTH = 0.26     ; Width of calibration grid in meters
    GRID_HEIGHT = 0.18    ; Height of calibration grid in meters
    ROBOT_MOUNTED = FALSE ; Camera is statically mounted (not on robot)
+
+   ;------------------------------------------------------------------------
+   ; DO NOT MODIFY CODE BELOW THIS LINE UNLESS YOU KNOW WHAT YOU ARE DOING
+   ;------------------------------------------------------------------------
    
    ;FOLD INI;%{PE}
       ;FOLD BASISTECH INI
