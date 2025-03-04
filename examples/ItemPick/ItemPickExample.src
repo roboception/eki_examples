@@ -214,7 +214,7 @@ END
          DECL CHAR ROI_ID[]
          DECL REAL SUCTION_LENGTH, SUCTION_WIDTH
          DECL EKI_STATUS RET
-         DECL FRAME flangePose
+         DECL E6POS flangePose
          
          flangePose = $POS_ACT_MES : INV_POS($TOOL)
          

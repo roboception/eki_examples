@@ -19,7 +19,7 @@ DEF MeasureExample()
    
    DECL CHAR serviceName[64]
    DECL EKI_Status RET
-   DECL FRAME flangePose
+   DECL E6POS flangePose
    
    ; Service name - same as the EKI service name
    ; TODO: Change this to the correct service name - could be "sensor_a_pipeline_1_rc_measure-measure_depth"

@@ -49,10 +49,10 @@ DEF CadMatchExample()
    LOAD_CARRIER_ID[] = " "                 ; Load carrier ID (Whitespace " " = none)
    ROI_ID[] = " "                          ; Region of interest ID
    GRIPPER_ID[] = " "                      ; Gripper ID for collision checking
-   ; Pre-grasp offset for collision detection (in meters) - negtive vlaues normally d
+   ; Pre-grasp offset for collision detection (in meters) - negtive vlaues normally desired
    PRE_GRASP_OFFSET_X = 0.0
    PRE_GRASP_OFFSET_Y = 0.0
-   PRE_GRASP_OFFSET_Z = 0.0
+   PRE_GRASP_OFFSET_Z = -0.3
    
    ; Motion parameters (in millimeters)
    MOT_PRE_GRASP_Z_OFFSET = -300        ; Vertical offset for pre-grasp position

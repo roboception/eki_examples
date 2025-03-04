@@ -92,7 +92,7 @@ END
       ;
       DECL CHAR serviceName[]
       DECL EKI_Status RET
-      DECL FRAME flangePose
+      DECL E6POS flangePose
       
       flangePose = $POS_ACT_MES : INV_POS($TOOL)
       

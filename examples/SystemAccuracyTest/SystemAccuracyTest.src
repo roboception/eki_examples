@@ -9,7 +9,7 @@ DEF SystemAccuracyTest()
    DECL FRAME PointPose
    DECL FRAME PrePointPose
    DECL FRAME F_OFFSET
-   DECL FRAME flangePose
+   DECL E6POS flangePose
    
    ;FOLD INI;%{PE}
       ;FOLD BASISTECH INI
