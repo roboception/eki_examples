@@ -2,6 +2,10 @@
 &REL 6
 &PARAM DISKPATH = KRC:\R1\Program\RC\NewEkiExamples
 DEF SystemAccuracyTest()
+   ; SystemAccuracyTest
+   ; -----------------
+   ; Tests system accuracy by detecting AprilTags and moving to the midpoint
+   
    ; EKI
    DECL CHAR serviceName[64]
    DECL EKI_Status RET
@@ -25,206 +29,208 @@ DEF SystemAccuracyTest()
    INTERRUPT DECL 89 WHEN $FLAG[998] DO RC_NOTIFYRECEIVED(1, 998)
    INTERRUPT ON 89
    
-   ; Set custom tool no to the currently used tool
-   ; WARNING: Make sure that hand-eye-calibration was done with no tool (NULLFRAME / Flange)
-   ;          before enabling the following line!
-   ; ----------------------------------------------------------------------------------------
-   ;CUSTOM_TOOL_NO = $ACT_TOOL
-   
-   ; Initialize EKI connection with better error handling
+   ; Initialize EKI connection
    serviceName[] = "new_lab_1_rc_april_tag_detect-detect"
    RC_INIT(serviceName[])
-   RC_OPENCONNECTION(serviceName[])   ; This will quit program if connection fails
+   RC_OPENCONNECTION(serviceName[])   
    
    LOOP
-      ;FOLD SPTP HOME Vel=10 % DEFAULT ;%{PE}
-         ;FOLD Parameters ;%{h}
-            ;Params IlfProvider=kukaroboter.basistech.inlineforms.movement.spline; Kuka.IsGlobalPoint=False; Kuka.PointName=HOME; Kuka.BlendingEnabled=False; Kuka.MoveDataPtpName=DEFAULT; Kuka.VelocityPtp=10; Kuka.VelocityFieldEnabled=True; Kuka.ColDetectFieldEnabled=True; Kuka.CurrentCDSetIndex=0; Kuka.MovementParameterFieldEnabled=True; IlfCommand=SPTP
-         ;ENDFOLD
-         SPTP XHOME WITH $VEL_AXIS[1] = SVEL_JOINT(rPTPVelocityStd), $TOOL = STOOL2(FHOME), $BASE = SBASE(FHOME.BASE_NO), $IPO_MODE = SIPO_MODE(FHOME.IPO_FRAME), $LOAD = SLOAD(FHOME.TOOL_NO), $ACC_AXIS[1] = SACC_JOINT(PDEFAULT), $APO = SAPO_PTP(PDEFAULT), $GEAR_JERK[1] = SGEAR_JERK(PDEFAULT), $COLLMON_TOL_PRO[1] = USE_CM_PRO_VALUES(0)
-      ;ENDFOLD
+      ; Move to home position
+      SPTP XHOME WITH $VEL_AXIS[1] = SVEL_JOINT(rPTPVelocityStd), $TOOL = STOOL2(FHOME), $BASE = SBASE(FHOME.BASE_NO), $IPO_MODE = SIPO_MODE(FHOME.IPO_FRAME), $LOAD = SLOAD(FHOME.TOOL_NO), $ACC_AXIS[1] = SACC_JOINT(PDEFAULT), $APO = SAPO_PTP(PDEFAULT), $GEAR_JERK[1] = SGEAR_JERK(PDEFAULT), $COLLMON_TOL_PRO[1] = USE_CM_PRO_VALUES(0)
       
       RC_SETMSG("Moved to home position. Place test sheet in the workspace.")
       HALT
       
+      ; Detect AprilTags
       flangePose = $POS_ACT_MES : INV_POS($TOOL)
       RET = EKI_SetString(serviceName[], "req/args/pose_frame", "external")
       RET = EKI_SetFrame(serviceName[], "req/args/robot_pose", flangePose)
       RET = EKI_Send(serviceName[], "req")
       
       RC_WAITFORRESULT(1)
-      RC_READTAGRESULT(serviceName[])
+      RC_READRESULT(serviceName[])
       
-      IF(RETURNCODE.VALUE < 0) THEN
-         RC_SETMSG("Execution failed")
-         HALT  ; Stop here to let user decide whether to continue
-         CONTINUE  ; Skip rest of loop and start over
-      ENDIF
-      
-      IF NUMDETECTEDITEMS == 2 THEN
-         ; Calculate point pose - add better error checking
-         IF NOT CalculatePointPoseFCT(PointPose) THEN
-            RC_SETMSG("Failed to calculate point pose")
-            HALT  ; Stop here to let user decide whether to continue
-            CONTINUE  ; Skip rest of loop and start over
-         ENDIF
-         
-         ; Calculate pre-point pose using frame offset
-         F_OFFSET = $NULLFRAME
-         F_OFFSET.Z = -preGraspOffsetZ
-         PrePointPose = PointPose:F_OFFSET
-         
-         ; Log positions
-         par[1] = {par_type #value, par_real 0}
-         par[1].par_real = PrePointPose.X
-         par[2] = {par_type #value, par_real 0}
-         par[2].par_real = PrePointPose.Y
-         par[3] = {par_type #value, par_real 0}
-         par[3].par_real = PrePointPose.Z
-         
-         RC_SETMSG_PARAM("Target position: X: %1, Y: %2, Z: %3", par[])
-         
-         par[1] = {par_type #value, par_real 0}
-         par[1].par_real = PrePointPose.A
-         par[2] = {par_type #value, par_real 0}
-         par[2].par_real = PrePointPose.B
-         par[3] = {par_type #value, par_real 0}
-         par[3].par_real = PrePointPose.C
-         
-         RC_SETMSG_PARAM("Target orientation: A: %1, B: %2, C: %3", par[])
-         
-         ; Execute movement sequence with better error handling
-         IF NOT ExecutePointSequenceFCT(PrePointPose, PointPose) THEN
-            RC_SETMSG("Movement sequence failed")
-            HALT  ; Stop here to let user decide whether to continue
-            CONTINUE  ; Skip rest of loop and start over
-         ENDIF
-         
-         ;FOLD SPTP HOME Vel=100 % DEFAULT ;%{PE}
-            ;FOLD Parameters ;%{h}
-               ;Params IlfProvider=kukaroboter.basistech.inlineforms.movement.spline; Kuka.IsGlobalPoint=False; Kuka.PointName=HOME; Kuka.BlendingEnabled=False; Kuka.MoveDataPtpName=DEFAULT; Kuka.VelocityPtp=100; Kuka.VelocityFieldEnabled=True; Kuka.CurrentCDSetIndex=0; Kuka.MovementParameterFieldEnabled=True; IlfCommand=SPTP
-            ;ENDFOLD
+      ; Check detection result
+      IF DetectionSuccessful() THEN
+         ; Process detected tags
+         IF NUMDETECTEDTAGS == 2 THEN
+            ; Calculate midpoint between tags
+            PointPose.X = DETECTEDTAGS[1].X + ((DETECTEDTAGS[2].X - DETECTEDTAGS[1].X) / 2)
+            PointPose.Y = DETECTEDTAGS[1].Y + ((DETECTEDTAGS[2].Y - DETECTEDTAGS[1].Y) / 2)
+            PointPose.Z = DETECTEDTAGS[1].Z + ((DETECTEDTAGS[2].Z - DETECTEDTAGS[1].Z) / 2)
+            PointPose.A = DETECTEDTAGS[1].A
+            PointPose.B = DETECTEDTAGS[1].B
+            PointPose.C = DETECTEDTAGS[1].C
+            
+            ; Calculate pre-approach position
+            F_OFFSET = $NULLFRAME
+            F_OFFSET.Z = -preGraspOffsetZ
+            PrePointPose = PointPose:F_OFFSET
+            
+            ; Display target position
+            par[1] = {par_type #value, par_real 0}
+            par[1].par_real = PrePointPose.X
+            par[2] = {par_type #value, par_real 0}
+            par[2].par_real = PrePointPose.Y
+            par[3] = {par_type #value, par_real 0}
+            par[3].par_real = PrePointPose.Z
+            RC_SETMSG_PARAM("Target position: X: %1, Y: %2, Z: %3", par[])
+            
+            ; Move to pre-approach position
+            SPTP PrePointPose WITH $VEL_AXIS[1] = SVEL_JOINT(rPTPVelocityStd), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO), $ACC_AXIS[1] = SACC_JOINT(pDatDefault), $APO = SAPO_PTP(pDatDefault), $GEAR_JERK[1] = SGEAR_JERK(pDatDefault)
+            
+            ; Move to target position
+            SLIN PointPose WITH $VEL = SVEL_CP(rLinVelocitySlow), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO), $ACC = SACC_CP(lDatDefault), $ORI_TYPE = SORI_TYP(lDatDefault)
+            
+            RC_SETMSG("Target position reached. Measure deviation from crosshair. Continue to move home.")
+            HALT
+            
+            ; Move back to pre-approach position
+            SLIN PrePointPose WITH $VEL = SVEL_CP(rLinVelocitySlow), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO), $ACC = SACC_CP(lDatDefault), $ORI_TYPE = SORI_TYP(lDatDefault)
+            
+            ; Return to home
             SPTP XHOME WITH $VEL_AXIS[1] = SVEL_JOINT(rPTPVelocityStd), $TOOL = STOOL2(FHOME), $BASE = SBASE(FHOME.BASE_NO), $IPO_MODE = SIPO_MODE(FHOME.IPO_FRAME), $LOAD = SLOAD(FHOME.TOOL_NO), $ACC_AXIS[1] = SACC_JOINT(PDEFAULT), $APO = SAPO_PTP(PDEFAULT), $GEAR_JERK[1] = SGEAR_JERK(PDEFAULT), $COLLMON_TOL_PRO[1] = USE_CM_PRO_VALUES(0)
-         ;ENDFOLD
-         
+         ELSE
+            RC_SETMSG("Did not find 2 AprilTags")
+            HALT
+         ENDIF
       ELSE
-         RC_SETMSG("Did not find 2 AprilTags")
-         HALT  ; Stop here to let user decide whether to continue
-         CONTINUE  ; Skip rest of loop and start over
-      ENDIF     
-      
+         HandleDetectionFailure()
+         HALT
+      ENDIF
    ENDLOOP
    
    RC_CLOSECONNECTION(serviceName[], "req")
 END
 
-; Helper function for grasp pose calculation using FCT
-DEFFCT BOOL CalculatePointPoseFCT(PointPose:OUT)
-   DECL FRAME PointPose
+; ---- Roboception Functions ----
+;FOLD RC Functions
+   DEF ConfigureDetection(serviceName[]:IN)
+      ; Configures detection parameters for AprilTag detection
+      ;
+      ; @param serviceName[]: EKI configuration/service name
+      ;
+      DECL CHAR serviceName[]
+      DECL EKI_Status RET
+      DECL E6POS flangePose
+      
+      flangePose = $POS_ACT_MES : INV_POS($TOOL)
+      
+      RET = EKI_SetString(serviceName[], "req/args/pose_frame", "external")
+      RET = EKI_SetFrame(serviceName[], "req/args/robot_pose", flangePose)
+   END
    
-   ; Validate input poses
-   IF NOT ValidateTagPoseFCT(DETECTEDITEMS[1]) OR NOT ValidateTagPoseFCT(DETECTEDITEMS[2]) THEN
-      RETURN FALSE
-   ENDIF
+   DEF PerformDetection(serviceName[]:IN)
+      ; Performs AprilTag detection using configured parameters
+      ;
+      ; @param serviceName[]: EKI configuration/service name
+      ;
+      DECL CHAR serviceName[]
+      DECL EKI_Status RET
+      
+      RET = EKI_Send(serviceName[], "req")
+      RC_WAITFORRESULT(1)
+      RC_READRESULT(serviceName[])
+   END
    
-   ; Calculate midpoint between tags
-   PointPose.X = DETECTEDITEMS[1].X + ((DETECTEDITEMS[2].X - DETECTEDITEMS[1].X) / 2)
-   PointPose.Y = DETECTEDITEMS[1].Y + ((DETECTEDITEMS[2].Y - DETECTEDITEMS[1].Y) / 2)
-   PointPose.Z = DETECTEDITEMS[1].Z + ((DETECTEDITEMS[2].Z - DETECTEDITEMS[1].Z) / 2)
-   
-   ; Use orientation from first tag
-   PointPose.A = DETECTEDITEMS[1].A
-   PointPose.B = DETECTEDITEMS[1].B
-   PointPose.C = DETECTEDITEMS[1].C
-   
-   RETURN TRUE
-ENDFCT
-
-; Helper function for movement sequence using FCT
-DEFFCT BOOL ExecutePointSequenceFCT(PrePointPose:IN, PointPose:IN)
-   DECL FRAME PrePointPose, PointPose
-   
-   ; Validate input poses
-   IF NOT ValidateTagPoseFCT(PrePointPose) OR NOT ValidateTagPoseFCT(PointPose) THEN
-      RETURN FALSE
-   ENDIF
-   
-   ; Execute movement sequence with proper tool and load data
-   SPTP PrePointPose WITH $VEL_AXIS[1] = SVEL_JOINT(rPTPVelocityStd), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO), $ACC_AXIS[1] = SACC_JOINT(pDatDefault), $APO = SAPO_PTP(pDatDefault), $GEAR_JERK[1] = SGEAR_JERK(pDatDefault)
-   SLIN PointPose WITH $VEL = SVEL_CP(rLinVelocitySlow), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO), $ACC = SACC_CP(lDatDefault), $ORI_TYPE = SORI_TYP(lDatDefault)
-   
-   RC_SETMSG("Target position reached. Measure deviation from crosshair. Continue to move home.")
-   HALT
-   
-   SLIN PrePointPose WITH $VEL = SVEL_CP(rLinVelocitySlow), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO), $ACC = SACC_CP(lDatDefault), $ORI_TYPE = SORI_TYP(lDatDefault)
-   
-   RETURN TRUE
-ENDFCT
-
-; Helper function to validate pose
-DEFFCT BOOL ValidateTagPoseFCT(Pose:IN)
-   DECL FRAME Pose
-   
-   IF (Pose.X == 0) AND (Pose.Y == 0) AND (Pose.Z == 0) AND (Pose.A == 0) AND (Pose.B == 0) AND (Pose.C == 0) THEN
-      RETURN FALSE
-   ENDIF
-   
-   RETURN TRUE
-ENDFCT
-
-DEF RC_SETMSG(msg[]:IN)
-   DECL CHAR msg[]
-   DECL KrlMsgPar_T params[3]
-   
-   RC_SETMSG_PARAM(msg[], params[])
-END
-
-DEF RC_SETMSG_PARAM(msg[]:IN, params:OUT)
-   DECL CHAR msg[]
-   DECL KrlMsgPar_T params[]
-   
-   DECL KrlMsg_T name
-   DECL KrlMsgOpt_T options
-   DECL INT Handle, len, count
-   DECL EKrlMsgType Type
-   
-   name={modul[] "RC", nr 1, msg_txt[] " "}
-   
-   Type=#notify
-   
-   len=STRLEN(msg[])
-   IF len>0 THEN
-      IF len>80 THEN
-         len=80
+   DEFFCT BOOL DetectionSuccessful()
+      ; Checks if AprilTag detection was successful
+      ;
+      ; @return TRUE if tags were detected, FALSE otherwise
+      ;
+      IF(RETURNCODE.VALUE < 0) THEN
+         RETURN FALSE
       ENDIF
-      FOR count=1 TO len
-         name.msg_txt[count]=msg[count]
-      ENDFOR
-   ELSE
-      name.msg_txt[]="parameter msg[] is missing"
-   ENDIF
+      
+      IF NUMDETECTEDTAGS > 0 THEN
+         ShowDetectionResults()
+         RETURN TRUE
+      ENDIF
+      
+      RETURN FALSE
+   ENDFCT
    
-   Handle=Set_KrlMsg(Type, name, params[], options)
-END
-
-;FOLD RC_INIT
+   DEF ShowDetectionResults()
+      ; Displays information about detected AprilTags
+      ;
+      DECL INT i
+      DECL KrlMsgPar_T countPar[1]
+      DECL KrlMsgPar_T par[4]
+      
+      countPar[1] = {par_type #value, par_real 0}
+      countPar[1].par_real = NUMDETECTEDTAGS
+      RC_SETMSG_PARAM("Number of AprilTags detected: %1", countPar[])
+      
+      FOR i=1 TO NUMDETECTEDTAGS
+         par[1] = {par_type #value, par_real 0}
+         par[1].par_real = i
+         par[2] = {par_type #value, par_real 0}
+         par[2].par_real = DETECTEDTAGS[i].X
+         par[3] = {par_type #value, par_real 0}
+         par[3].par_real = DETECTEDTAGS[i].Y
+         par[4] = {par_type #value, par_real 0}
+         par[4].par_real = DETECTEDTAGS[i].Z
+         RC_SETMSG_PARAM("April Tag %1: X: %2, Y: %3, Z: %4", par[])
+      ENDFOR
+   END
+   
+   DEF HandleDetectionFailure()
+      ; Handles cases where AprilTag detection fails
+      ;
+      IF(RETURNCODE.VALUE < 0) THEN
+         RC_SETMSG("Execution failed")
+      ELSE
+         RC_SETMSG("No AprilTags detected")
+      ENDIF
+   END
+   
+   DEF RC_SETMSG(msg[]:IN)
+      DECL CHAR msg[]
+      DECL KrlMsgPar_T params[3]
+      
+      RC_SETMSG_PARAM(msg[], params[])
+   END
+   
+   DEF RC_SETMSG_PARAM(msg[]:IN, params[]:OUT)
+      DECL CHAR msg[]
+      DECL KrlMsgPar_T params[]
+      
+      DECL KrlMsg_T name
+      DECL KrlMsgOpt_T options
+      DECL INT Handle, len, count
+      DECL EKrlMsgType Type
+      
+      name={modul[] "RC", nr 1, msg_txt[] " "}
+      Type=#notify
+      
+      len=STRLEN(msg[])
+      IF len>0 THEN
+         IF len>80 THEN
+            len=80
+         ENDIF
+         FOR count=1 TO len
+            name.msg_txt[count]=msg[count]
+         ENDFOR
+      ELSE
+         name.msg_txt[]="parameter msg[] is missing"
+      ENDIF
+      
+      Handle=Set_KrlMsg(Type, name, params[], options)
+   END
+   
    DEF RC_INIT(configFileName[]:IN)
       DECL CHAR configFileName[]
       DECL EKI_Status RET
       RET=EKI_INIT(configFileName[])
    END
-;ENDFOLD (RC_INIT)
-
-;FOLD RC_OPENCONNECTION
+   
    DEF RC_OPENCONNECTION(configFileName[]:IN)
       DECL CHAR configFileName[]
-      DECL EKI_STATUS RET
-      RET = EKI_Open(configFileName[])
-      EKI_CHECK(RET,#quit)    ; This will quit if connection fails
+      DECL EKI_Status RET
+      RET=EKI_Open(configFileName[])
+      EKI_CHECK(RET,#Quit)
    END
-;ENDFOLD (RC_OPENCONNECTION)
-
-;FOLD RC_CLOSECONNECTION
+   
    DEF RC_CLOSECONNECTION(configFileName[]:IN, strPlace[]:IN)
       DECL CHAR configFileName[]
       DECL CHAR strPlace[]
@@ -233,67 +239,45 @@ END
       RET=EKI_Close(configFileName[])
       RET=EKI_ClearBuffer(configFileName[], strPlace[])
    END
-;ENDFOLD (RC_CLOSECONNECTION)
-
-;FOLD RC_WAITFORRESULT
+   
    DEF RC_WAITFORRESULT(WaitFlag:IN)
       DECL INT WaitFlag
-      
       WAIT FOR $FLAG[WaitFlag] OR NOT $FLAG[RCEkiAliveFlagNo]
-      
-      ;Eki-connection has been closed 
       IF(NOT $FLAG[RCEkiAliveFlagNo]) THEN
          RC_SETMSG("EKI connection lost")
       ENDIF
-      
       $FLAG[WaitFlag] = FALSE
    END
-;ENDFOLD (RC_WAITFORRESULT)
-
-;FOLD RC_NOTIFYRECEIVED
+   
    DEF RC_NOTIFYRECEIVED(WAITFLAG:IN, EOFRESULFLAG:IN)
       DECL INT WAITFLAG
       DECL INT EOFRESULFLAG
       $FLAG[EOFRESULFLAG]=FALSE
       $FLAG[WAITFLAG]=TRUE
    END
-;ENDFOLD (RC_NOTIFYRECEIVED)
-
-;FOLD RC_READTAGRESULT
-   DEF RC_READTAGRESULT(configFileName[]:IN)
+   
+   DEF RC_READRESULT(configFileName[]:IN)
       DECL CHAR configFileName[]
-      DECL CHAR tagId[80]
       DECL RETURNCODE_T RESULT
       DECL EKI_STATUS RET
       DECL INT j
       DECL FRAME POSE
       
       POSE = POSE_IDENT
-      tagId[]="-"
       RESULT={VALUE 0, MSG[] "0"}
       
       RET = EKI_GetInt(configFileName[], "res/return_code/@value", RESULT.VALUE)
       RET = EKI_GetString(configFileName[], "res/return_code/@message", RESULT.MSG[])
       RETURNCODE = RESULT
       
-      RET = EKI_CheckBuffer(configFileName[], "res/tags/le/instance_id")
-      NUMDETECTEDITEMS = RET.Buff
-      for j=1 to NUMDETECTEDITEMS
-         
-         RET = EKI_GetString(configFileName[], "res/tags/le/id", tagId[])
-         
-         IF STRCOMP(tagId[], "36h11_1", (#CASE_SENS)) THEN
-            RET = EKI_GetFrame(configFileName[], "res/tags/le/pose", POSE)
-            DETECTEDITEMS[1] = POSE
-         ENDIF
-         
-         IF STRCOMP(tagId[], "36h11_0", (#CASE_SENS)) THEN
-            RET = EKI_GetFrame(configFileName[], "res/tags/le/pose", POSE)
-            DETECTEDITEMS[2] = POSE
-         ENDIF    
-         
-      endfor
+      RET = EKI_CheckBuffer(configFileName[], "res/tags/le/id")
+      NUMDETECTEDTAGS = RET.Buff
+      
+      FOR j=1 TO NUMDETECTEDTAGS
+         RET = EKI_GetFrame(configFileName[], "res/tags/le/pose", POSE)
+         DETECTEDTAGS[j] = POSE
+      ENDFOR
       
       RET = EKI_ClearBuffer(configFileName[], "res")
    END
-;ENDFOLD (RC_READTAGRESULT)
+;ENDFOLD (RC Functions)
