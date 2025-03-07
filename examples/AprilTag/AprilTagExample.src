@@ -30,7 +30,7 @@ DEF AprilTagExample()
    INTERRUPT ON 89
    
    ; Move robot to home position
-   MoveToHome()
+   MoveToStartPosition()
    
    ; Initialize AprilTag detection and open connection to rc_cube
    $FLAG[1] = FALSE
@@ -55,7 +55,7 @@ DEF AprilTagExample()
    RC_SETMSG("Detection finished")
    
    ; Return to home position
-   MoveToHome()
+   MoveToStartPosition()
 END
 
 DEF ExecuteTagMovements()
@@ -77,11 +77,12 @@ DEF MoveToTagPosition(AprilPose:IN)
    SPTP AboveAprilPose WITH $VEL_AXIS[1] = SVEL_JOINT(100.0), $TOOL = STOOL2(FP1), $BASE = SBASE(FP1.BASE_NO), $IPO_MODE = SIPO_MODE(FP1.IPO_FRAME), $LOAD = SLOAD(FP1.TOOL_NO), $ACC_AXIS[1] = SACC_JOINT(PPDAT1), $APO = SAPO_PTP(PPDAT1), $GEAR_JERK[1] = SGEAR_JERK(PPDAT1), $COLLMON_TOL_PRO[1] = USE_CM_PRO_VALUES(0)
 END
 
-DEF MoveToHome()
-   ;FOLD SPTP HOME Vel=100 % DEFAULT
-      SPTP XHOME WITH $VEL_AXIS[1]= SVEL_JOINT(100), $TOOL= STOOL2(FHOME), $BASE= SBASE(FHOME.BASE_NO), $IPO_MODE= SIPO_MODE(FHOME.IPO_FRAME), $LOAD= SLOAD(FHOME.TOOL_NO), $ACC_AXIS[1]= SACC_JOINT(PDEFAULT), $GEAR_JERK[1]= SGEAR_JERK(PDEFAULT)
+DEF MoveToStartPosition()
+   ;FOLD SPTP STARTPOSE Vel=100 % DEFAULT
+      SPTP STARTPOSE WITH $VEL_AXIS[1]= SVEL_JOINT(100), $TOOL= STOOL2(fDatDefault), $BASE= SBASE(fDatDefault.BASE_NO), $IPO_MODE= SIPO_MODE(fDatDefault.IPO_FRAME), $LOAD= SLOAD(fDatDefault.TOOL_NO), $ACC_AXIS[1]= SACC_JOINT(PDEFAULT), $GEAR_JERK[1]= SGEAR_JERK(PDEFAULT)
    ;ENDFOLD
 END
+
 
 ; ---- Roboception Functions ----
 ;FOLD RC Functions
@@ -92,9 +93,12 @@ END
       ;
       DECL CHAR serviceName[]
       DECL EKI_Status RET
+      DECL E6POS flangePose
+      
+      flangePose = $POS_ACT_MES : INV_POS($TOOL)
       
       RET = EKI_SetString(serviceName[], "req/args/pose_frame", "external")
-      RET = EKI_SetFrame(serviceName[], "req/args/robot_pose", $POS_ACT_MES)
+      RET = EKI_SetFrame(serviceName[], "req/args/robot_pose", flangePose)
    END
    
    DEF PerformDetection(serviceName[]:IN)

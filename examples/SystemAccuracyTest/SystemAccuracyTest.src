@@ -9,6 +9,7 @@ DEF SystemAccuracyTest()
    DECL FRAME PointPose
    DECL FRAME PrePointPose
    DECL FRAME F_OFFSET
+   DECL E6POS flangePose
    
    ;FOLD INI;%{PE}
       ;FOLD BASISTECH INI
@@ -46,8 +47,9 @@ DEF SystemAccuracyTest()
       RC_SETMSG("Moved to home position. Place test sheet in the workspace.")
       HALT
       
+      flangePose = $POS_ACT_MES : INV_POS($TOOL)
       RET = EKI_SetString(serviceName[], "req/args/pose_frame", "external")
-      RET = EKI_SetFrame(serviceName[], "req/args/robot_pose", $POS_ACT_MES)
+      RET = EKI_SetFrame(serviceName[], "req/args/robot_pose", flangePose)
       RET = EKI_Send(serviceName[], "req")
       
       RC_WAITFORRESULT(1)

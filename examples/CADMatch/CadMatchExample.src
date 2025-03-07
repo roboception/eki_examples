@@ -4,14 +4,36 @@
 &PARAM TEMPLATE = C:\KRC\Roboter\Template\vorgabe
 &PARAM DISKPATH = KRC:\R1\Program\RC\NewEkiExamples
 DEF CadMatchExample()
-   ; CADMatch Example Program
-   ; -----------------------
-   ; Demonstrates CAD-based object detection and pick-and-place operations using
-   ; Roboception's CADMatch module. The program:
+   ;------------------------------------------------------------------------
+   ; CADMatch Example Program for Roboception rc_visard/rc_cube
+   ;
+   ; This program demonstrates CAD-based object detection and pick-and-place 
+   ; operations using Roboception's CADMatch module. The program:
    ; 1. Configures detection parameters for the specified template
    ; 2. Performs object detection with retry mechanism
    ; 3. Executes pick-and-place operations for detected objects
    ; 4. Continues until no more objects are found or program is interrupted
+   ;
+   ; IMPORTANT SETUP INSTRUCTIONS:
+   ; 1. The service names MUST match exactly with your EKI XML configuration files
+   ; 2. Modify only the parameters in this section before running the program
+   ; 3. Teach the STARTPOSE and PLACEPOSE positions in the .dat file
+   ; 4. Define the GRIP() and RELEASE() functions for your specific gripper
+   ;
+   ; HOW THE PROGRAM WORKS:
+   ; - The program calls the CADMatch detection service which returns an array of possible grasps
+   ; - Currently, only the first grasp (index 1) is used for the pick-and-place sequence
+   ; - If detection fails, the program will retry up to MAX_DETECTION_RETRIES times
+   ; - After successful detection, the robot will:
+   ;   a) Move to a pre-grasp position above the detected object
+   ;   b) Move down to grasp the object
+   ;   c) Pick up the object and move to the pre-place position
+   ;   d) Place the object at the taught PLACEPOSE
+   ;   e) Return to the start position and repeat the cycle
+   ;
+   ; To use multiple detected objects, you would need to modify the code to
+   ; iterate through the DETECTEDGRASPS array (indices 1 to NUMDETECTEDGRASPS)
+   ;------------------------------------------------------------------------
    DECL INT MAX_DETECTION_RETRIES
    DECL INT RETRY_COUNT
    
@@ -22,19 +44,19 @@ DEF CadMatchExample()
    serviceNameStop[] = "rc_cadmatch-stop"
    
    ; Detection configuration parameters
-   TEMPLATE_ID[] = "SCS 10 UU"      ; CAD template to match
-   POSE_FRAME[] = "external"        ; Reference frame for poses
-   LOAD_CARRIER_ID[] = " "          ; Load carrier ID (empty = none)
-   ROI_ID[] = " "                   ; Region of interest ID (empty = none)
-   GRIPPER_ID[] = " "               ; Gripper ID for collision checking
-   ; Pre-grasp offset for collision detection (in meters)
+   TEMPLATE_ID[] = "CADMatchTemplate"      ; CAD template to match
+   POSE_FRAME[] = "external"               ; Reference frame for poses
+   LOAD_CARRIER_ID[] = " "                 ; Load carrier ID (Whitespace " " = none)
+   ROI_ID[] = " "                          ; Region of interest ID
+   GRIPPER_ID[] = " "                      ; Gripper ID for collision checking
+   ; Pre-grasp offset for collision detection (in meters) - negtive vlaues normally desired
    PRE_GRASP_OFFSET_X = 0.0
    PRE_GRASP_OFFSET_Y = 0.0
-   PRE_GRASP_OFFSET_Z = 0.0
+   PRE_GRASP_OFFSET_Z = -0.3
    
    ; Motion parameters (in millimeters)
-   MOT_PRE_GRASP_Z_OFFSET = 300        ; Vertical offset for pre-grasp position
-   MOT_PRE_PLACE_Z_OFFSET = 300        ; Vertical offset for pre-place position
+   MOT_PRE_GRASP_Z_OFFSET = -300        ; Vertical offset for pre-grasp position
+   MOT_PRE_PLACE_Z_OFFSET = -300        ; Vertical offset for pre-place position
    
    ; Detection retry configuration
    MAX_DETECTION_RETRIES = 3        ; Maximum number of detection attempts
@@ -54,7 +76,7 @@ DEF CadMatchExample()
    
    ; Move robot to home position
    RELEASE()
-   MoveToHome()
+   MoveToStartPosition()
    
    ; Initialize CADMatch module and open connection to rc_cube
    RC_START(serviceNameStart[])
@@ -122,12 +144,8 @@ DEF ExecutePickAndPlace(GRASPPOSE:IN, PLACEPOSE:IN, MOT_PRE_GRASP_Z_OFFSET:IN, M
    PREGRASPPOSE = GRASPPOSE:F_OFFSET
    
    ; Calculate pre-place pose
-   PREPLACEPOSE.x = PLACEPOSE.x
-   PREPLACEPOSE.y = PLACEPOSE.y
+   PREPLACEPOSE = PLACEPOSE
    PREPLACEPOSE.z = PLACEPOSE.z + MOT_PRE_PLACE_Z_OFFSET
-   PREPLACEPOSE.a = PLACEPOSE.a
-   PREPLACEPOSE.b = PLACEPOSE.b
-   PREPLACEPOSE.c = PLACEPOSE.c
    
    ; Move to pre-grasp position
    SPTP PREGRASPPOSE WITH $VEL_AXIS[1] = SVEL_JOINT(rptpVelocityStd), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO), $IPO_MODE = SIPO_MODE(fDatDefault.IPO_FRAME), $LOAD = SLOAD(fDatDefault.TOOL_NO), $ACC_AXIS[1] = SACC_JOINT(pDatDefault), $APO = SAPO_PTP(pDatDefault), $GEAR_JERK[1] = SGEAR_JERK(pDatDefault)
@@ -166,13 +184,13 @@ DEF ExecutePickAndPlace(GRASPPOSE:IN, PLACEPOSE:IN, MOT_PRE_GRASP_Z_OFFSET:IN, M
    SLIN PREPLACEPOSE WITH $VEL = SVEL_CP(rlinVelocityStd, , lDatDefault), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO)
    
    ; Return to home position
-   MoveToHome()
+   MoveToStartPosition()
 END
 
 ; ---- Helper Functions ----
-DEF MoveToHome()
-   ;FOLD SPTP HOME Vel=100 % DEFAULT
-      SPTP XHOME WITH $VEL_AXIS[1]= SVEL_JOINT(100), $TOOL= STOOL2(FHOME), $BASE= SBASE(FHOME.BASE_NO), $IPO_MODE= SIPO_MODE(FHOME.IPO_FRAME), $LOAD= SLOAD(FHOME.TOOL_NO), $ACC_AXIS[1]= SACC_JOINT(PDEFAULT), $GEAR_JERK[1]= SGEAR_JERK(PDEFAULT)
+DEF MoveToStartPosition()
+   ;FOLD SPTP STARTPOSE Vel=100 % DEFAULT
+      SPTP STARTPOSE WITH $VEL_AXIS[1]= SVEL_JOINT(100), $TOOL= STOOL2(fDatDefault), $BASE= SBASE(fDatDefault.BASE_NO), $IPO_MODE= SIPO_MODE(fDatDefault.IPO_FRAME), $LOAD= SLOAD(fDatDefault.TOOL_NO), $ACC_AXIS[1]= SACC_JOINT(PDEFAULT), $GEAR_JERK[1]= SGEAR_JERK(PDEFAULT)
    ;ENDFOLD
 END
 
@@ -197,10 +215,13 @@ END
       DECL REAL PRE_GRASP_OFFSET_X
       DECL REAL PRE_GRASP_OFFSET_Y
       DECL REAL PRE_GRASP_OFFSET_Z
+      DECL E6POS flangePose
+      
+      flangePose = $POS_ACT_MES : INV_POS($TOOL)
       
       RET = EKI_SetString(serviceNameDetect[], "req/args/template_id", TEMPLATE_ID[])
       RET = EKI_SetString(serviceNameDetect[], "req/args/pose_frame", POSE_FRAME[])
-      RET = EKI_SetFrame(serviceNameDetect[], "req/args/robot_pose", $POS_ACT_MES)
+      RET = EKI_SetFrame(serviceNameDetect[], "req/args/robot_pose", flangePose)
       
       IF LOAD_CARRIER_ID[1] <> " " THEN
          RET = EKI_SetString(serviceNameDetect[], "req/args/load_carrier_id", LOAD_CARRIER_ID[])
