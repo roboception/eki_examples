@@ -4,7 +4,13 @@
 DEF SystemAccuracyTest()
    ; SystemAccuracyTest
    ; -----------------
-   ; Tests system accuracy by detecting AprilTags and moving to the midpoint
+   ; Tests the system's positioning accuracy using AprilTag detection. The program:
+   ; 1. Detects two AprilTags placed on a test sheet
+   ; 2. Calculates the midpoint between the two tags
+   ; 3. Moves the robot to this midpoint position
+   ; 4. Allows measurement of positioning deviation from the expected target
+   ; 5. Returns to home position after completion
+   ;
    
    ; EKI
    DECL CHAR serviceName[64]
