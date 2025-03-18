@@ -1,5 +1,4 @@
 &ACCESS RVP
-&REL 6
 &PARAM DISKPATH = KRC:\R1\Program\RC\NewEkiExamples
 DEF EstimateRobotPose()
    ; EKI
@@ -10,6 +9,7 @@ DEF EstimateRobotPose()
    DECL FRAME PointPose
    DECL FRAME PrePointPose
    DECL FRAME F_OFFSET
+   DECL FRAME EstimatedPose
    
    ;FOLD INI;%{PE}
       ;FOLD BASISTECH INI
@@ -25,19 +25,16 @@ DEF EstimateRobotPose()
    INTERRUPT DECL 89 WHEN $FLAG[998] DO RC_NOTIFYRECEIVED(1, 998)
    INTERRUPT ON 89
    
-   ; Set custom tool no to the currently used tool
-   ; WARNING: Make sure that hand-eye-calibration was done with no tool (NULLFRAME / Flange)
-   ;          before enabling the following line!
-   ; ----------------------------------------------------------------------------------------
-   ;CUSTOM_TOOL_NO = $ACT_TOOL
-   
-   ; Initialize EKI connection with better error handling
-   serviceNameDetect[] = "new_lab_1_rc_april_tag_detect-detect"
-   RC_INIT(serviceNameDetect[])
-   RC_OPENCONNECTION(serviceNameDetect[])
-
+   ; Initialize EKI connections with better error handling
    serviceNameEstimate[] = "new_lab_1_rc_hand_eye_calibration-estimate_robot_pose"
    RC_INIT(serviceNameEstimate[])
+   
+   serviceNameDetect[] = "new_lab_1_rc_april_tag_detect-detect"
+   RC_INIT(serviceNameDetect[])
+   
+   
+   ; Now continue with the regular program
+   RC_OPENCONNECTION(serviceNameDetect[])
    
    LOOP
       ;FOLD SPTP HOME Vel=10 % DEFAULT ;%{PE}
@@ -50,20 +47,11 @@ DEF EstimateRobotPose()
       RC_SETMSG("Moved to home position. Place test sheet in the workspace.")
       HALT
       
-      RET = EKI_SetString(serviceNameDetect[], "req/args/pose_frame", "external")
-      RET = EKI_SetFrame(serviceNameDetect[], "req/args/robot_pose", $POS_ACT_MES)
-      RET = EKI_Send(serviceNameDetect[], "req")
+      ; Call detect service
+      ConfigureDetection(serviceNameDetect[])
+      PerformDetection(serviceNameDetect[])
       
-      RC_WAITFORRESULT(1)
-      RC_READTAGRESULT(serviceNameDetect[])
-      
-      IF(RETURNCODE.VALUE < 0) THEN
-         RC_SETMSG("Execution failed")
-         HALT  ; Stop here to let user decide whether to continue
-         CONTINUE  ; Skip rest of loop and start over
-      ENDIF
-      
-      IF NUMDETECTEDITEMS == 2 THEN
+      IF DetectionSuccessful() THEN
          ; Calculate point pose - add better error checking
          IF NOT CalculatePointPoseFCT(PointPose) THEN
             RC_SETMSG("Failed to calculate point pose")
@@ -110,9 +98,9 @@ DEF EstimateRobotPose()
          ;ENDFOLD
          
       ELSE
-         RC_SETMSG("Did not find 2 AprilTags")
-         HALT  ; Stop here to let user decide whether to continue
-         CONTINUE  ; Skip rest of loop and start over
+         HandleDetectionFailure()
+         HALT
+         CONTINUE
       ENDIF     
       
    ENDLOOP
@@ -125,19 +113,19 @@ DEFFCT BOOL CalculatePointPoseFCT(PointPose:OUT)
    DECL FRAME PointPose
    
    ; Validate input poses
-   IF NOT ValidateTagPoseFCT(DETECTEDITEMS[1]) OR NOT ValidateTagPoseFCT(DETECTEDITEMS[2]) THEN
+   IF NOT ValidateTagPoseFCT(DETECTEDTAGS[1]) OR NOT ValidateTagPoseFCT(DETECTEDTAGS[2]) THEN
       RETURN FALSE
    ENDIF
    
    ; Calculate midpoint between tags
-   PointPose.X = DETECTEDITEMS[1].X + ((DETECTEDITEMS[2].X - DETECTEDITEMS[1].X) / 2)
-   PointPose.Y = DETECTEDITEMS[1].Y + ((DETECTEDITEMS[2].Y - DETECTEDITEMS[1].Y) / 2)
-   PointPose.Z = DETECTEDITEMS[1].Z + ((DETECTEDITEMS[2].Z - DETECTEDITEMS[1].Z) / 2)
+   PointPose.X = DETECTEDTAGS[1].X + ((DETECTEDTAGS[2].X - DETECTEDTAGS[1].X) / 2)
+   PointPose.Y = DETECTEDTAGS[1].Y + ((DETECTEDTAGS[2].Y - DETECTEDTAGS[1].Y) / 2)
+   PointPose.Z = DETECTEDTAGS[1].Z + ((DETECTEDTAGS[2].Z - DETECTEDTAGS[1].Z) / 2)
    
    ; Use orientation from first tag
-   PointPose.A = DETECTEDITEMS[1].A
-   PointPose.B = DETECTEDITEMS[1].B
-   PointPose.C = DETECTEDITEMS[1].C
+   PointPose.A = DETECTEDTAGS[1].A
+   PointPose.B = DETECTEDTAGS[1].B
+   PointPose.C = DETECTEDTAGS[1].C
    
    RETURN TRUE
 ENDFCT
@@ -147,7 +135,6 @@ DEFFCT BOOL ExecutePointSequenceFCT(PrePointPose:IN, PointPose:IN, serviceNameEs
    DECL FRAME PrePointPose, PointPose
    DECL CHAR serviceNameEstimate[]
    DECL EKI_Status RET
-   DECL KrlMsgPar_T par[3]
    DECL FRAME EstimatedPose
    
    ; Validate input poses
@@ -158,32 +145,21 @@ DEFFCT BOOL ExecutePointSequenceFCT(PrePointPose:IN, PointPose:IN, serviceNameEs
    ; Execute movement sequence with proper tool and load data
    SPTP PrePointPose WITH $VEL_AXIS[1] = SVEL_JOINT(rPTPVelocityStd), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO), $ACC_AXIS[1] = SACC_JOINT(pDatDefault), $APO = SAPO_PTP(pDatDefault), $GEAR_JERK[1] = SGEAR_JERK(pDatDefault)
    
-   ; Call estimate robot pose service
-   RET = EKI_SetString(serviceNameEstimate[], "req/args/pose_frame", "external")
-   RET = EKI_SetFrame(serviceNameEstimate[], "req/args/robot_pose", $POS_ACT_MES)
+   ; Open connection to the estimate service
+   RC_OPENCONNECTION(serviceNameEstimate[])
+   
+   ; Call estimate robot pose service - this is an empty request
    RET = EKI_Send(serviceNameEstimate[], "req")
    
    RC_WAITFORRESULT(1)
-   RC_READESTIMATEDPOSE(serviceNameEstimate[], EstimatedPose)
    
-   ; Log estimated pose
-   par[1] = {par_type #value, par_real 0}
-   par[1].par_real = EstimatedPose.X
-   par[2] = {par_type #value, par_real 0}
-   par[2].par_real = EstimatedPose.Y
-   par[3] = {par_type #value, par_real 0}
-   par[3].par_real = EstimatedPose.Z
-   RC_SETMSG_PARAM("Estimated position: X: %1, Y: %2, Z: %3", par[])
-   
-   par[1].par_real = EstimatedPose.A
-   par[2].par_real = EstimatedPose.B
-   par[3].par_real = EstimatedPose.C
-   RC_SETMSG_PARAM("Estimated orientation: A: %1, B: %2, C: %3", par[])
+   ; Use the new function to read estimated pose
+   RC_ESTIMATEROBOTPOSE(serviceNameEstimate[], EstimatedPose)
    
    HALT  ; Pause to review estimated pose
    
    RC_CLOSECONNECTION(serviceNameEstimate[], "req")
-
+   
    SLIN PointPose WITH $VEL = SVEL_CP(rLinVelocitySlow), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO), $ACC = SACC_CP(lDatDefault), $ORI_TYPE = SORI_TYP(lDatDefault)
    
    RC_SETMSG("Target position reached. Measure deviation from crosshair. Continue to move home.")
@@ -193,26 +169,6 @@ DEFFCT BOOL ExecutePointSequenceFCT(PrePointPose:IN, PointPose:IN, serviceNameEs
    
    RETURN TRUE
 ENDFCT
-
-DEF RC_READESTIMATEDPOSE(configFileName[]:IN, EstimatedPose:OUT)
-   DECL CHAR configFileName[]
-   DECL FRAME EstimatedPose
-   DECL RETURNCODE_T RESULT
-   DECL EKI_STATUS RET
-   
-   RESULT={VALUE 0, MSG[] "0"}
-   EstimatedPose = POSE_IDENT
-   
-   RET = EKI_GetInt(configFileName[], "res/return_code/@value", RESULT.VALUE)
-   RET = EKI_GetString(configFileName[], "res/return_code/@message", RESULT.MSG[])
-   RETURNCODE = RESULT
-   
-   IF(RETURNCODE.VALUE >= 0) THEN
-      RET = EKI_GetFrame(configFileName[], "res/pose", EstimatedPose)
-   ENDIF
-   
-   RET = EKI_ClearBuffer(configFileName[], "res")
-END
 
 ; Helper function to validate pose
 DEFFCT BOOL ValidateTagPoseFCT(Pose:IN)
@@ -312,8 +268,76 @@ END
    END
 ;ENDFOLD (RC_NOTIFYRECEIVED)
 
+;FOLD ConfigureDetection
+   DEF ConfigureDetection(serviceName[]:IN)
+      ; Configures detection parameters for AprilTag detection
+      ;
+      ; @param serviceName[]: EKI configuration/service name
+      ;
+      DECL CHAR serviceName[]
+      DECL EKI_Status RET
+      DECL E6POS flangePose
+      
+      flangePose = $POS_ACT_MES : INV_POS($TOOL)
+      
+      RET = EKI_SetString(serviceName[], "req/args/pose_frame", "external")
+      RET = EKI_SetFrame(serviceName[], "req/args/robot_pose", flangePose)
+   END
+;ENDFOLD (ConfigureDetection)
+
+;FOLD PerformDetection
+   DEF PerformDetection(serviceName[]:IN)
+      ; Performs AprilTag detection using configured parameters
+      ; and reads the results using RC_READTAGRESULT
+      ;
+      ; @param serviceName[]: EKI configuration/service name
+      ;
+      DECL CHAR serviceName[]
+      DECL EKI_Status RET
+      
+      RET = EKI_Send(serviceName[], "req")
+      RC_WAITFORRESULT(1)
+      RC_READTAGRESULT(serviceName[])
+   END
+;ENDFOLD (PerformDetection)
+
+;FOLD DetectionSuccessful
+   DEFFCT BOOL DetectionSuccessful()
+      ; Checks if AprilTag detection was successful
+      ;
+      ; @return TRUE if tags were detected, FALSE otherwise
+      ;
+      IF(RETURNCODE.VALUE < 0) THEN
+         RETURN FALSE
+      ENDIF
+      
+      IF NUMDETECTEDTAGS > 0 THEN
+         RETURN TRUE
+      ENDIF
+      
+      RETURN FALSE
+   ENDFCT
+;ENDFOLD (DetectionSuccessful)
+
+;FOLD HandleDetectionFailure
+   DEF HandleDetectionFailure()
+      ; Handles cases where AprilTag detection fails
+      ;
+      IF(RETURNCODE.VALUE < 0) THEN
+         RC_SETMSG("Execution failed")
+      ELSE
+         RC_SETMSG("No AprilTags detected")
+      ENDIF
+   END
+;ENDFOLD (HandleDetectionFailure)
+
 ;FOLD RC_READTAGRESULT
    DEF RC_READTAGRESULT(configFileName[]:IN)
+      ; Reads the tag detection results from the EKI buffer with proper error handling.
+      ; This function replaces the older RC_READRESULT for AprilTag detection
+      ;
+      ; @param configFileName[]: EKI configuration/service name
+      ;
       DECL CHAR configFileName[]
       DECL CHAR tagId[80]
       DECL RETURNCODE_T RESULT
@@ -325,28 +349,130 @@ END
       tagId[]="-"
       RESULT={VALUE 0, MSG[] "0"}
       
-      RET = EKI_GetInt(configFileName[], "res/return_code/@value", RESULT.VALUE)
-      RET = EKI_GetString(configFileName[], "res/return_code/@message", RESULT.MSG[])
-      RETURNCODE = RESULT
+      ; Check if return code exists in buffer before trying to read it
+      RET = EKI_CheckBuffer(configFileName[], "res/return_code/@value")
+      IF RET.Buff > 0 THEN
+         RET = EKI_GetInt(configFileName[], "res/return_code/@value", RESULT.VALUE)
+         RET = EKI_GetString(configFileName[], "res/return_code/@message", RESULT.MSG[])
+         RETURNCODE = RESULT
+      ELSE
+         ; Handle the case where return code doesn't exist
+         RETURNCODE.VALUE = -1
+         RETURNCODE.MSG[] = "No return code in response"
+      ENDIF
       
+      ; Check if we have any tags
       RET = EKI_CheckBuffer(configFileName[], "res/tags/le/instance_id")
-      NUMDETECTEDITEMS = RET.Buff
-      for j=1 to NUMDETECTEDITEMS
-         
+      NUMDETECTEDTAGS = RET.Buff
+      
+      for j=1 to NUMDETECTEDTAGS
          RET = EKI_GetString(configFileName[], "res/tags/le/id", tagId[])
          
          IF STRCOMP(tagId[], "36h11_1", (#CASE_SENS)) THEN
             RET = EKI_GetFrame(configFileName[], "res/tags/le/pose", POSE)
-            DETECTEDITEMS[1] = POSE
+            DETECTEDTAGS[1] = POSE
          ENDIF
          
          IF STRCOMP(tagId[], "36h11_0", (#CASE_SENS)) THEN
             RET = EKI_GetFrame(configFileName[], "res/tags/le/pose", POSE)
-            DETECTEDITEMS[2] = POSE
+            DETECTEDTAGS[2] = POSE
          ENDIF    
-         
       endfor
       
       RET = EKI_ClearBuffer(configFileName[], "res")
    END
 ;ENDFOLD (RC_READTAGRESULT)
+
+;FOLD RC_ESTIMATEROBOTPOSE
+   DEF RC_ESTIMATEROBOTPOSE(configFileName[]:IN, EstimatedPose:OUT)
+      ; Reads robot pose estimation results from the EKI buffer with proper error handling
+      ;
+      ; @param configFileName[]: EKI configuration/service name
+      ; @param EstimatedPose: Output parameter for the estimated robot pose
+      ;
+      DECL CHAR configFileName[]
+      DECL FRAME EstimatedPose
+      DECL RETURNCODE_T RESULT
+      DECL EKI_Status RET
+      DECL KrlMsgPar_T par[3]
+      DECL E6POS ActualToolPose
+      
+      EstimatedPose = POSE_IDENT
+      RESULT={VALUE 0, MSG[] "0"}
+      
+      ; Check if return code exists in buffer before trying to read it
+      RET = EKI_CheckBuffer(configFileName[], "res/return_code/@value")
+      IF RET.Buff > 0 THEN
+         RET = EKI_GetInt(configFileName[], "res/return_code/@value", RESULT.VALUE)
+         RET = EKI_GetString(configFileName[], "res/return_code/@message", RESULT.MSG[])
+         RETURNCODE = RESULT
+      ELSE
+         ; Handle the case where return code doesn't exist
+         RETURNCODE.VALUE = -1
+         RETURNCODE.MSG[] = "No return code in response"
+      ENDIF
+      
+      IF(RETURNCODE.VALUE >= 0) THEN
+         ; Check if pose exists in buffer before reading it
+         RET = EKI_CheckBuffer(configFileName[], "res/pose/@X")
+         IF RET.Buff > 0 THEN
+            ; Read the pose components individually
+            RET = EKI_GetReal(configFileName[], "res/pose/@X", EstimatedPose.X)
+            RET = EKI_GetReal(configFileName[], "res/pose/@Y", EstimatedPose.Y)
+            RET = EKI_GetReal(configFileName[], "res/pose/@Z", EstimatedPose.Z)
+            RET = EKI_GetReal(configFileName[], "res/pose/@A", EstimatedPose.A)
+            RET = EKI_GetReal(configFileName[], "res/pose/@B", EstimatedPose.B)
+            RET = EKI_GetReal(configFileName[], "res/pose/@C", EstimatedPose.C)
+            
+            ; Display position and orientation in two separate messages
+            ; First message for position
+            par[1] = {par_type #value, par_real 0}
+            par[1].par_real = EstimatedPose.X
+            par[2] = {par_type #value, par_real 0}
+            par[2].par_real = EstimatedPose.Y
+            par[3] = {par_type #value, par_real 0}
+            par[3].par_real = EstimatedPose.Z
+            RC_SETMSG_PARAM("Estimated Pos: X:%1 Y:%2 Z:%3", par[])
+            
+            ; Second message for orientation
+            par[1].par_real = EstimatedPose.A
+            par[2].par_real = EstimatedPose.B
+            par[3].par_real = EstimatedPose.C
+            RC_SETMSG_PARAM("Estimated Rot: A:%1 B:%2 C:%3", par[])
+            
+            ; Get actual tool position and compare
+            ActualToolPose = $POS_ACT_MES : INV_POS($TOOL)
+            
+            ; Display position and orientation in two separate messages
+            ; First message for position
+            par[1].par_real = ActualToolPose.X
+            par[2].par_real = ActualToolPose.Y
+            par[3].par_real = ActualToolPose.Z
+            RC_SETMSG_PARAM("Actual Pos: X:%1 Y:%2 Z:%3", par[])
+            
+            ; Second message for orientation
+            par[1].par_real = ActualToolPose.A
+            par[2].par_real = ActualToolPose.B
+            par[3].par_real = ActualToolPose.C
+            RC_SETMSG_PARAM("Actual Rot: A:%1 B:%2 C:%3", par[])
+            
+            ; Display position and orientation differences in two separate messages
+            ; First message for position differences
+            par[1].par_real = EstimatedPose.X - ActualToolPose.X
+            par[2].par_real = EstimatedPose.Y - ActualToolPose.Y
+            par[3].par_real = EstimatedPose.Z - ActualToolPose.Z
+            RC_SETMSG_PARAM("Pos Diff: X:%1 Y:%2 Z:%3", par[])
+            
+            ; Second message for orientation differences
+            par[1].par_real = EstimatedPose.A - ActualToolPose.A
+            par[2].par_real = EstimatedPose.B - ActualToolPose.B
+            par[3].par_real = EstimatedPose.C - ActualToolPose.C
+            RC_SETMSG_PARAM("Rot Diff: A:%1 B:%2 C:%3", par[])
+         ELSE
+            RC_SETMSG("No pose data found in response")
+         ENDIF
+      ENDIF
+      
+      RET = EKI_ClearBuffer(configFileName[], "res")
+   END
+;ENDFOLD (RC_ESTIMATEROBOTPOSE)
