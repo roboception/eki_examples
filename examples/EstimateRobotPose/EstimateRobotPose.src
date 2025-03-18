@@ -9,7 +9,6 @@ DEF EstimateRobotPose()
    DECL FRAME PointPose
    DECL FRAME PrePointPose
    DECL FRAME F_OFFSET
-   DECL FRAME EstimatedPose
    
    ;FOLD INI;%{PE}
       ;FOLD BASISTECH INI
@@ -24,6 +23,9 @@ DEF EstimateRobotPose()
    
    INTERRUPT DECL 89 WHEN $FLAG[998] DO RC_NOTIFYRECEIVED(1, 998)
    INTERRUPT ON 89
+   
+   ; Initialize correction transformation as identity
+   CorrectionTransformation = $NULLFRAME
    
    ; Initialize EKI connections with better error handling
    serviceNameEstimate[] = "new_lab_1_rc_hand_eye_calibration-estimate_robot_pose"
@@ -136,6 +138,7 @@ DEFFCT BOOL ExecutePointSequenceFCT(PrePointPose:IN, PointPose:IN, serviceNameEs
    DECL CHAR serviceNameEstimate[]
    DECL EKI_Status RET
    DECL FRAME EstimatedPose
+   DECL FRAME CorrectedPointPose, CorrectedPrePointPose
    
    ; Validate input poses
    IF NOT ValidateTagPoseFCT(PrePointPose) OR NOT ValidateTagPoseFCT(PointPose) THEN
@@ -153,19 +156,28 @@ DEFFCT BOOL ExecutePointSequenceFCT(PrePointPose:IN, PointPose:IN, serviceNameEs
    
    RC_WAITFORRESULT(1)
    
-   ; Use the new function to read estimated pose
+   ; Use the function to read estimated pose and calculate correction
    RC_ESTIMATEROBOTPOSE(serviceNameEstimate[], EstimatedPose)
    
    HALT  ; Pause to review estimated pose
    
    RC_CLOSECONNECTION(serviceNameEstimate[], "req")
    
-   SLIN PointPose WITH $VEL = SVEL_CP(rLinVelocitySlow), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO), $ACC = SACC_CP(lDatDefault), $ORI_TYPE = SORI_TYP(lDatDefault)
+   ; Calculate corrected positions by applying the correction transformation using frame operations
+   ; P_corrected = P_target:CorrectionTransformation
+   CorrectedPointPose = PointPose:CorrectionTransformation
+   CorrectedPrePointPose = PrePointPose:CorrectionTransformation
    
-   RC_SETMSG("Target position reached. Measure deviation from crosshair. Continue to move home.")
+   ; Log the corrected pose
+   RC_SETMSG("Moving to corrected target position")
+   
+   ; Now move to the corrected positions
+   SLIN CorrectedPointPose WITH $VEL = SVEL_CP(rLinVelocitySlow), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO), $ACC = SACC_CP(lDatDefault), $ORI_TYPE = SORI_TYP(lDatDefault)
+   
+   RC_SETMSG("Corrected target position reached. Measure deviation from crosshair. Continue to move home.")
    HALT
    
-   SLIN PrePointPose WITH $VEL = SVEL_CP(rLinVelocitySlow), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO), $ACC = SACC_CP(lDatDefault), $ORI_TYPE = SORI_TYP(lDatDefault)
+   SLIN CorrectedPrePointPose WITH $VEL = SVEL_CP(rLinVelocitySlow), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO), $ACC = SACC_CP(lDatDefault), $ORI_TYPE = SORI_TYP(lDatDefault)
    
    RETURN TRUE
 ENDFCT
@@ -385,19 +397,19 @@ END
 
 ;FOLD RC_ESTIMATEROBOTPOSE
    DEF RC_ESTIMATEROBOTPOSE(configFileName[]:IN, EstimatedPose:OUT)
-      ; Reads robot pose estimation results from the EKI buffer with proper error handling
+      ; Reads robot pose estimation results from the EKI buffer and calculates correction transformation
       ;
       ; @param configFileName[]: EKI configuration/service name
-      ; @param EstimatedPose: Output parameter for the estimated robot pose
+      ; @param EstimatedPose: Output parameter for the actual pose (P_actual) measured by vision
       ;
       DECL CHAR configFileName[]
       DECL FRAME EstimatedPose
       DECL RETURNCODE_T RESULT
       DECL EKI_Status RET
       DECL KrlMsgPar_T par[3]
-      DECL E6POS ActualToolPose
+      DECL FRAME CommandedPose  ; Changed to FRAME type for proper frame operations
       
-      EstimatedPose = POSE_IDENT
+      EstimatedPose = $NULLFRAME
       RESULT={VALUE 0, MSG[] "0"}
       
       ; Check if return code exists in buffer before trying to read it
@@ -424,7 +436,7 @@ END
             RET = EKI_GetReal(configFileName[], "res/pose/@B", EstimatedPose.B)
             RET = EKI_GetReal(configFileName[], "res/pose/@C", EstimatedPose.C)
             
-            ; Display position and orientation in two separate messages
+            ; Display actual position and orientation (P_actual from vision) in two separate messages
             ; First message for position
             par[1] = {par_type #value, par_real 0}
             par[1].par_real = EstimatedPose.X
@@ -432,42 +444,47 @@ END
             par[2].par_real = EstimatedPose.Y
             par[3] = {par_type #value, par_real 0}
             par[3].par_real = EstimatedPose.Z
-            RC_SETMSG_PARAM("Estimated Pos: X:%1 Y:%2 Z:%3", par[])
+            RC_SETMSG_PARAM("P_actual Pos: X:%1 Y:%2 Z:%3", par[])
             
             ; Second message for orientation
             par[1].par_real = EstimatedPose.A
             par[2].par_real = EstimatedPose.B
             par[3].par_real = EstimatedPose.C
-            RC_SETMSG_PARAM("Estimated Rot: A:%1 B:%2 C:%3", par[])
+            RC_SETMSG_PARAM("P_actual Rot: A:%1 B:%2 C:%3", par[])
             
-            ; Get actual tool position and compare
-            ActualToolPose = $POS_ACT_MES : INV_POS($TOOL)
+            ; Get commanded tool position (P_cmd - where robot thinks it is)
+            CommandedPose = $POS_ACT_MES : INV_POS($TOOL)
             
-            ; Display position and orientation in two separate messages
+            ; Display commanded position and orientation in two separate messages
             ; First message for position
-            par[1].par_real = ActualToolPose.X
-            par[2].par_real = ActualToolPose.Y
-            par[3].par_real = ActualToolPose.Z
-            RC_SETMSG_PARAM("Actual Pos: X:%1 Y:%2 Z:%3", par[])
+            par[1].par_real = CommandedPose.X
+            par[2].par_real = CommandedPose.Y
+            par[3].par_real = CommandedPose.Z
+            RC_SETMSG_PARAM("P_cmd Pos: X:%1 Y:%2 Z:%3", par[])
             
             ; Second message for orientation
-            par[1].par_real = ActualToolPose.A
-            par[2].par_real = ActualToolPose.B
-            par[3].par_real = ActualToolPose.C
-            RC_SETMSG_PARAM("Actual Rot: A:%1 B:%2 C:%3", par[])
+            par[1].par_real = CommandedPose.A
+            par[2].par_real = CommandedPose.B
+            par[3].par_real = CommandedPose.C
+            RC_SETMSG_PARAM("P_cmd Rot: A:%1 B:%2 C:%3", par[])
             
-            ; Display position and orientation differences in two separate messages
-            ; First message for position differences
-            par[1].par_real = EstimatedPose.X - ActualToolPose.X
-            par[2].par_real = EstimatedPose.Y - ActualToolPose.Y
-            par[3].par_real = EstimatedPose.Z - ActualToolPose.Z
-            RC_SETMSG_PARAM("Pos Diff: X:%1 Y:%2 Z:%3", par[])
+            ; Calculate correction transformation using proper frame operations
+            ; T_correction maps from P_actual to P_cmd: P_cmd = P_actual:T_correction
+            ; So T_correction = P_actual⁻¹:P_cmd = INV(P_actual):P_cmd
+            CorrectionTransformation = EstimatedPose:CommandedPose
             
-            ; Second message for orientation differences
-            par[1].par_real = EstimatedPose.A - ActualToolPose.A
-            par[2].par_real = EstimatedPose.B - ActualToolPose.B
-            par[3].par_real = EstimatedPose.C - ActualToolPose.C
-            RC_SETMSG_PARAM("Rot Diff: A:%1 B:%2 C:%3", par[])
+            ; Display the correction frame values
+            par[1].par_real = CorrectionTransformation.X
+            par[2].par_real = CorrectionTransformation.Y
+            par[3].par_real = CorrectionTransformation.Z
+            RC_SETMSG_PARAM("Correction Pos: X:%1 Y:%2 Z:%3", par[])
+            
+            par[1].par_real = CorrectionTransformation.A
+            par[2].par_real = CorrectionTransformation.B
+            par[3].par_real = CorrectionTransformation.C
+            RC_SETMSG_PARAM("Correction Rot: A:%1 B:%2 C:%3", par[])
+            
+            RC_SETMSG("Correction transformation calculated and stored. Ready to apply to movements.")
          ELSE
             RC_SETMSG("No pose data found in response")
          ENDIF
