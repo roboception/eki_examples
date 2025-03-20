@@ -16,6 +16,8 @@ DEFDAT  EstimateRobotPose
    DECL FRAME DETECTEDTAGS[32]
    DECL INT NUMDETECTEDTAGS
    
+   DECL FRAME CorrectionTransformation
+   
    ; Additional required variables
    DECL REAL preGraspOffsetZ=40.0
    DECL REAL rLinVelocityStd=0.1
