@@ -48,7 +48,7 @@ DEF CadMatchExample()
    POSE_FRAME[] = "external"               ; Reference frame for poses
    LOAD_CARRIER_ID[] = " "                 ; Load carrier ID (Whitespace " " = none)
    ROI_ID[] = " "                          ; Region of interest ID
-
+   
    ; Collision checking parameters - deactivate all to disable collision checking
    GRIPPER_ID[] = " "                      ; Gripper ID for collision checking
    ; Pre-grasp offset for collision checking (in meters) - negtive vlaues normally desired
@@ -254,6 +254,8 @@ END
       DECL CHAR serviceNameDetect[]
       DECL EKI_Status RET
       
+      ; Synchronize advance run pointer
+      WAIT SEC 0
       RET = EKI_Send(serviceNameDetect[], "req")
       RC_WAITFORRESULT(1)
       RC_READRESULT(serviceNameDetect[])
@@ -297,10 +299,7 @@ END
    ENDFCT
    
    DEF HandleDetectionFailure()
-      IF (RETURNCODE.VALUE < 0) THEN
-         RC_SETMSG("Execution failed")
-         RC_SETMSG(RETURNCODE.MSG[])
-      ELSE
+      IF (RETURNCODE.VALUE > 0) THEN
          RC_SETMSG("No CADMatch result")
       ENDIF
       HALT
@@ -401,6 +400,12 @@ END
       RET = EKI_GetInt(configFileName[], "res/return_code/@value", RESULT.VALUE)
       RET = EKI_GetString(configFileName[], "res/return_code/@message", RESULT.MSG[])
       RETURNCODE = RESULT
+      
+      ; Display error message immediately if there is one
+      IF (RESULT.VALUE < 0) THEN
+         RC_SETMSG("API Error")
+         RC_SETMSG(RESULT.MSG[])
+      ENDIF
       
       ;Receive number of detections
       RET = EKI_CheckBuffer(configFileName[], "res/grasps/le/id")

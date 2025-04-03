@@ -13,7 +13,7 @@ DEF SystemAccuracyTest()
    ;
    
    ; EKI
-   DECL CHAR serviceName[64]
+   DECL CHAR serviceNameDetect[64]
    DECL EKI_Status RET
    DECL KrlMsgPar_T par[3]
    DECL FRAME PointPose
@@ -36,9 +36,9 @@ DEF SystemAccuracyTest()
    INTERRUPT ON 89
    
    ; Initialize EKI connection
-   serviceName[] = "new_lab_1_rc_april_tag_detect-detect"
-   RC_INIT(serviceName[])
-   RC_OPENCONNECTION(serviceName[])   
+   serviceNameDetect[] = "new_lab_1_rc_april_tag_detect-detect"
+   RC_INIT(serviceNameDetect[])
+   RC_OPENCONNECTION(serviceNameDetect[])   
    
    LOOP
       ; Move to home position
@@ -49,12 +49,15 @@ DEF SystemAccuracyTest()
       
       ; Detect AprilTags
       flangePose = $POS_ACT_MES : INV_POS($TOOL)
-      RET = EKI_SetString(serviceName[], "req/args/pose_frame", "external")
-      RET = EKI_SetFrame(serviceName[], "req/args/robot_pose", flangePose)
-      RET = EKI_Send(serviceName[], "req")
+      RET = EKI_SetString(serviceNameDetect[], "req/args/pose_frame", "external")
+      RET = EKI_SetFrame(serviceNameDetect[], "req/args/robot_pose", flangePose)
+
+      ; Synchronize advance run pointer
+      WAIT SEC 0
+      RET = EKI_Send(serviceNameDetect[], "req")
       
       RC_WAITFORRESULT(1)
-      RC_READRESULT(serviceName[])
+      RC_READRESULT(serviceNameDetect[])
       
       ; Check detection result
       IF DetectionSuccessful() THEN
@@ -106,37 +109,39 @@ DEF SystemAccuracyTest()
       ENDIF
    ENDLOOP
    
-   RC_CLOSECONNECTION(serviceName[], "req")
+   RC_CLOSECONNECTION(serviceNameDetect[], "req")
 END
 
 ; ---- Roboception Functions ----
 ;FOLD RC Functions
-   DEF ConfigureDetection(serviceName[]:IN)
+   DEF ConfigureDetection(serviceNameDetect[]:IN)
       ; Configures detection parameters for AprilTag detection
       ;
-      ; @param serviceName[]: EKI configuration/service name
+      ; @param serviceNameDetect[]: EKI configuration/service name
       ;
-      DECL CHAR serviceName[]
+      DECL CHAR serviceNameDetect[]
       DECL EKI_Status RET
       DECL E6POS flangePose
       
       flangePose = $POS_ACT_MES : INV_POS($TOOL)
       
-      RET = EKI_SetString(serviceName[], "req/args/pose_frame", "external")
-      RET = EKI_SetFrame(serviceName[], "req/args/robot_pose", flangePose)
+      RET = EKI_SetString(serviceNameDetect[], "req/args/pose_frame", "external")
+      RET = EKI_SetFrame(serviceNameDetect[], "req/args/robot_pose", flangePose)
    END
    
-   DEF PerformDetection(serviceName[]:IN)
+   DEF PerformDetection(serviceNameDetect[]:IN)
       ; Performs AprilTag detection using configured parameters
       ;
-      ; @param serviceName[]: EKI configuration/service name
+      ; @param serviceNameDetect[]: EKI configuration/service name
       ;
-      DECL CHAR serviceName[]
+      DECL CHAR serviceNameDetect[]
       DECL EKI_Status RET
       
-      RET = EKI_Send(serviceName[], "req")
+      ; Synchronize advance run pointer
+      WAIT SEC 0
+      RET = EKI_Send(serviceNameDetect[], "req")
       RC_WAITFORRESULT(1)
-      RC_READRESULT(serviceName[])
+      RC_READRESULT(serviceNameDetect[])
    END
    
    DEFFCT BOOL DetectionSuccessful()
@@ -275,6 +280,12 @@ END
       RET = EKI_GetInt(configFileName[], "res/return_code/@value", RESULT.VALUE)
       RET = EKI_GetString(configFileName[], "res/return_code/@message", RESULT.MSG[])
       RETURNCODE = RESULT
+      
+      ; Display error message immediately if there is one
+      IF (RESULT.VALUE < 0) THEN
+         RC_SETMSG("API Error")
+         RC_SETMSG(RESULT.MSG[])
+      ENDIF
       
       RET = EKI_CheckBuffer(configFileName[], "res/tags/le/id")
       NUMDETECTEDTAGS = RET.Buff

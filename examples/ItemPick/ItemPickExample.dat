@@ -9,7 +9,7 @@ DEFDAT ItemPickExample
    ;FOLD USER EXT;%{E}%MKUKATPUSER,%CEXT,%VEXT,%P
    
    ; EKI Communication
-   DECL CHAR serviceName[50]
+   DECL CHAR serviceNameDetect[64]
    
    ; Common structures and variables
    DECL INT RCEkiAliveFlagNo=997

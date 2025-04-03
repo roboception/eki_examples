@@ -257,13 +257,13 @@ END
 ;ENDFOLD (RC_NOTIFYRECEIVED)
 
 ;FOLD AprilTagDetection
-   DEF AprilTagDetection(serviceName[]:IN)
+   DEF AprilTagDetection(serviceNameDetect[]:IN)
       ; Performs AprilTag detection using configured parameters
       ; and reads the results using RC_READTAGRESULT
       ;
-      ; @param serviceName[]: EKI configuration/service name
+      ; @param serviceNameDetect[]: EKI configuration/service name
       ;
-      DECL CHAR serviceName[]
+      DECL CHAR serviceNameDetect[]
       DECL EKI_Status RET
       DECL E6POS flangePose
       DECL CHAR tagId[80]
@@ -272,11 +272,14 @@ END
       DECL FRAME POSE
       flangePose = $POS_ACT_MES : INV_POS($TOOL)
       
-      RC_OPENCONNECTION(serviceName[])
+      RC_OPENCONNECTION(serviceNameDetect[])
       
-      RET = EKI_SetString(serviceName[], "req/args/pose_frame", "external")
-      RET = EKI_SetFrame(serviceName[], "req/args/robot_pose", flangePose)
-      RET = EKI_Send(serviceName[], "req")
+      RET = EKI_SetString(serviceNameDetect[], "req/args/pose_frame", "external")
+      RET = EKI_SetFrame(serviceNameDetect[], "req/args/robot_pose", flangePose)
+      
+      ; Synchronize advance run pointer
+      WAIT SEC 0
+      RET = EKI_Send(serviceNameDetect[], "req")
       RC_WAITFORRESULT(1)
       
       POSE = POSE_IDENT
@@ -284,38 +287,39 @@ END
       RESULT={VALUE 0, MSG[] "0"}
       
       ; Check if return code exists in buffer before trying to read it
-      RET = EKI_CheckBuffer(serviceName[], "res/return_code/@value")
+      RET = EKI_CheckBuffer(serviceNameDetect[], "res/return_code/@value")
       IF RET.Buff > 0 THEN
-         RET = EKI_GetInt(serviceName[], "res/return_code/@value", RESULT.VALUE)
-         RET = EKI_GetString(serviceName[], "res/return_code/@message", RESULT.MSG[])
+         RET = EKI_GetInt(serviceNameDetect[], "res/return_code/@value", RESULT.VALUE)
+         RET = EKI_GetString(serviceNameDetect[], "res/return_code/@message", RESULT.MSG[])
          RETURNCODE = RESULT
-      ELSE
-         ; Handle the case where return code doesn't exist
-         RETURNCODE.VALUE = -1
-         RETURNCODE.MSG[] = "No return code in response"
+
+         IF (RESULT.VALUE < 0) THEN
+            RC_SETMSG("API Error")
+            RC_SETMSG(RESULT.MSG[])
+         ENDIF
       ENDIF
       
       ; Check if we have any tags
-      RET = EKI_CheckBuffer(serviceName[], "res/tags/le/instance_id")
+      RET = EKI_CheckBuffer(serviceNameDetect[], "res/tags/le/instance_id")
       NUMDETECTEDTAGS = RET.Buff
       
       for j=1 to NUMDETECTEDTAGS
-         RET = EKI_GetString(serviceName[], "res/tags/le/id", tagId[])
+         RET = EKI_GetString(serviceNameDetect[], "res/tags/le/id", tagId[])
          
          IF STRCOMP(tagId[], "36h11_1", (#CASE_SENS)) THEN
-            RET = EKI_GetFrame(serviceName[], "res/tags/le/pose", POSE)
+            RET = EKI_GetFrame(serviceNameDetect[], "res/tags/le/pose", POSE)
             DETECTEDTAGS[1] = POSE
          ENDIF
          
          IF STRCOMP(tagId[], "36h11_0", (#CASE_SENS)) THEN
-            RET = EKI_GetFrame(serviceName[], "res/tags/le/pose", POSE)
+            RET = EKI_GetFrame(serviceNameDetect[], "res/tags/le/pose", POSE)
             DETECTEDTAGS[2] = POSE
          ENDIF    
       endfor
       
-      RET = EKI_ClearBuffer(serviceName[], "res")
+      RET = EKI_ClearBuffer(serviceNameDetect[], "res")
       
-      RC_CLOSECONNECTION(serviceName[], "req")
+      RC_CLOSECONNECTION(serviceNameDetect[], "req")
    END
 ;ENDFOLD (AprilTagDetection)
 
@@ -386,7 +390,7 @@ END
       RET = EKI_GetInt(serviceNameEstimate[], "res/return_code/@value", RESULT.VALUE)
       RET = EKI_GetString(serviceNameEstimate[], "res/return_code/@message", RESULT.MSG[])
       RETURNCODE = RESULT
-      
+
       ; Read pose components
       RET = EKI_GetReal(serviceNameEstimate[], "res/pose/@X", P_actual.X)
       RET = EKI_GetReal(serviceNameEstimate[], "res/pose/@Y", P_actual.Y)

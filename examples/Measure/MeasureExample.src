@@ -17,13 +17,13 @@ DEF MeasureExample()
    ; 4. Continuously loops for repeated measurements
    ;
    
-   DECL CHAR serviceName[64]
+   DECL CHAR serviceNameDetect[64]
    DECL EKI_Status RET
    DECL E6POS flangePose
    
    ; Service name - same as the EKI service name
    ; TODO: Change this to the correct service name - could be "sensor_a_pipeline_1_rc_measure-measure_depth"
-   serviceName[] = "rc_measure-measure_depth"
+   serviceNameDetect[] = "rc_measure-measure_depth"
    
    ; Init cadmatch module and open connection to rc_cube
    $FLAG[1] = FALSE
@@ -40,8 +40,8 @@ DEF MeasureExample()
    INTERRUPT DECL 89 WHEN $FLAG[998] DO RC_NOTIFYRECEIVED(1, 998)
    INTERRUPT ON 89
    
-   RC_INIT(serviceName[])
-   RC_OPENCONNECTION(serviceName[])
+   RC_INIT(serviceNameDetect[])
+   RC_OPENCONNECTION(serviceNameDetect[])
    
    LOOP
       
@@ -56,27 +56,27 @@ DEF MeasureExample()
       ; Cell Count, number of seaparte cells [Default: X 1, Y 1]
       ; Robot pose, only mandatory for robot mounted camera
       ;****************************************
-      RET = EKI_SetString(serviceName[], "req/args/pose_frame", "external")
-      RET = EKI_SetInt(serviceName[], "req/args/cell_count/@x", 1)
-      RET = EKI_SetInt(serviceName[], "req/args/cell_count/@y", 1)
+      RET = EKI_SetString(serviceNameDetect[], "req/args/pose_frame", "external")
+      RET = EKI_SetInt(serviceNameDetect[], "req/args/cell_count/@x", 1)
+      RET = EKI_SetInt(serviceNameDetect[], "req/args/cell_count/@y", 1)
       
       flangePose = $POS_ACT_MES : INV_POS($TOOL)
-      RET = EKI_SetFrame(serviceName[], "req/args/robot_pose", flangePose)
+      RET = EKI_SetFrame(serviceNameDetect[], "req/args/robot_pose", flangePose)
       
       ;****************************************
       ; Optional application parameters:
       ; --------------------------------
-      ;RET = EKI_SetString(serviceName[], "req/args/data_acquisition_mode", "CAPTURE_NEW")
-      ;RET = EKI_SetInt(serviceName[], "req/args/region_of_interest_2d/@height", 0)
-      ;RET = EKI_SetInt(serviceName[], "req/args/region_of_interest_2d/@offset_x", 0)
-      ;RET = EKI_SetInt(serviceName[], "req/args/region_of_interest_2d/@offset_y", 0)
-      ;RET = EKI_SetInt(serviceName[], "req/args/region_of_interest_2d/@width", 0)
-      ;RET = EKI_SetString(serviceName[], "req/args/region_of_interest_2d_id", "Roi")      
+      ;RET = EKI_SetString(serviceNameDetect[], "req/args/data_acquisition_mode", "CAPTURE_NEW")
+      ;RET = EKI_SetInt(serviceNameDetect[], "req/args/region_of_interest_2d/@height", 0)
+      ;RET = EKI_SetInt(serviceNameDetect[], "req/args/region_of_interest_2d/@offset_x", 0)
+      ;RET = EKI_SetInt(serviceNameDetect[], "req/args/region_of_interest_2d/@offset_y", 0)
+      ;RET = EKI_SetInt(serviceNameDetect[], "req/args/region_of_interest_2d/@width", 0)
+      ;RET = EKI_SetString(serviceNameDetect[], "req/args/region_of_interest_2d_id", "Roi")      
       
       ; Send trigger and wait for vision results
-      RET = EKI_Send(serviceName[], "req")
+      RET = EKI_Send(serviceNameDetect[], "req")
       RC_WAITFORRESULT(1)
-      RC_READRESULT(serviceName[])
+      RC_READRESULT(serviceNameDetect[])
       
       ; Error handling
       IF (RETURNCODE.VALUE < 0) THEN
@@ -89,7 +89,7 @@ DEF MeasureExample()
       
    ENDLOOP
    
-   RC_CLOSECONNECTION(serviceName[], "req")
+   RC_CLOSECONNECTION(serviceNameDetect[], "req")
    
 END
 
@@ -201,6 +201,13 @@ END
          RET = EKI_GetString(configFileName[], "res/return_code/@message", RESULT.MSG[])
          RETURNCODE = RESULT
          
+         ; Display error message immediately if there is one
+         IF (RESULT.VALUE < 0) THEN
+            RC_SETMSG("API Error")
+            RC_SETMSG(RESULT.MSG[])
+         ENDIF
+         
+
          ;Receive data
          RET = EKI_GetInt(configFileName[], "res/cell_count/@x", cell_count_x)
          RET = EKI_GetInt(configFileName[], "res/cell_count/@y", cell_count_y)
