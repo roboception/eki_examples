@@ -48,11 +48,13 @@ DEF CadMatchExample()
    POSE_FRAME[] = "external"               ; Reference frame for poses
    LOAD_CARRIER_ID[] = " "                 ; Load carrier ID (Whitespace " " = none)
    ROI_ID[] = " "                          ; Region of interest ID
+
+   ; Collision checking parameters - deactivate all to disable collision checking
    GRIPPER_ID[] = " "                      ; Gripper ID for collision checking
-   ; Pre-grasp offset for collision detection (in meters) - negtive vlaues normally desired
-   PRE_GRASP_OFFSET_X = 0.0
-   PRE_GRASP_OFFSET_Y = 0.0
-   PRE_GRASP_OFFSET_Z = -0.3
+   ; Pre-grasp offset for collision checking (in meters) - negtive vlaues normally desired
+   PRE_GRASP_OFFSET_X = 0.0                 ; X offset - set to 0 to disable
+   PRE_GRASP_OFFSET_Y = 0.0                 ; Y offset - set to 0 to disable
+   PRE_GRASP_OFFSET_Z = -0.3                ; Z offset - set to 0 to disable
    
    ; Motion parameters (in millimeters)
    MOT_PRE_GRASP_Z_OFFSET = -300        ; Vertical offset for pre-grasp position
