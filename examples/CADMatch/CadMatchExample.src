@@ -40,7 +40,8 @@ DEF CadMatchExample()
    DECL CHAR tempMsg[120]       ; Temporary buffer for constructing messages
    DECL STATE_T State           ; State variable for SWRITE
    DECL INT Offset              ; Offset variable for SWRITE
-   
+   DECL E6POS selectedPlacePose ; Stores the selected place pose
+
    ; Service name - same as the EKI service name
    ; TODO: Change this to the correct service name - could be "sensor_a_pipeline_1_rc_cadmatch-detect_object"
    serviceNameDetect[] = "rc_cadmatch-detect_object" 
@@ -99,6 +100,7 @@ DEF CadMatchExample()
       ; Reset vision results
       ResetDetectedGrasps()
       RECEIVED_GRIPPER_ID[] = "none" ; Reset received ID for this cycle
+      RECEIVED_GRASP_ID[] = "none"   ; Reset received grasp ID for this cycle
       targetOpening = defaultOpening   ; Reset target opening to default
       
       ; Attempt detection with retries
@@ -127,6 +129,11 @@ DEF CadMatchExample()
          SWRITE(tempMsg[], State, Offset, "Received Gripper ID: %s", RECEIVED_GRIPPER_ID[])
          RC_SETMSG(tempMsg[])
          
+         ; Print the received grasp ID
+         Offset = 0 ; Reset offset for SWRITE
+         SWRITE(tempMsg[], State, Offset, "Received Grasp ID: %s", RECEIVED_GRASP_ID[])
+         RC_SETMSG(tempMsg[])
+         
          ; Determine target opening based on ID
          IF STRCOMP(RECEIVED_GRIPPER_ID[], "gripper_a", #NOT_CASE_SENS) THEN
             targetOpening = 100.0
@@ -143,7 +150,23 @@ DEF CadMatchExample()
          ENDIF
          ; --- End Gripper ID Logic ---
          
-         ExecutePickAndPlace(DETECTEDGRASPS[1], PLACEPOSE, MOT_PRE_GRASP_Z_OFFSET, MOT_PRE_PLACE_Z_OFFSET, targetOpening)
+         ; --- Place Pose Selection Logic based on Grasp ID ---
+         
+         IF STRCOMP(RECEIVED_GRASP_ID[], "grasp_1", #NOT_CASE_SENS) THEN
+            selectedPlacePose = PLACEPOSE1 ; Assumes PLACEPOSE1 is defined in .dat
+            RC_SETMSG("Grasp ID 'grasp_1' detected, using PLACEPOSE1.")
+         ELSE
+            IF STRCOMP(RECEIVED_GRASP_ID[], "grasp_2", #NOT_CASE_SENS) THEN
+               selectedPlacePose = PLACEPOSE2 ; Assumes PLACEPOSE2 is defined in .dat
+               RC_SETMSG("Grasp ID 'grasp_2' detected, using PLACEPOSE2.")
+            ELSE
+               selectedPlacePose = PLACEPOSE ; Use original PLACEPOSE as default
+               RC_SETMSG("Unknown or default grasp ID, using default PLACEPOSE.")
+            ENDIF
+         ENDIF
+         ; --- End Place Pose Selection Logic ---
+         
+         ExecutePickAndPlace(DETECTEDGRASPS[1], selectedPlacePose, MOT_PRE_GRASP_Z_OFFSET, MOT_PRE_PLACE_Z_OFFSET, targetOpening)
       ELSE
          HandleDetectionFailure()
          EXIT  ; Exit main loop if detection fails after all retries
@@ -460,6 +483,7 @@ END
       POSE = POSE_IDENT
       RESULT={VALUE 0, MSG[] "0"}
       RECEIVED_GRIPPER_ID[] = "none"
+      RECEIVED_GRASP_ID[] = "none" ; Initialize grasp ID
       
       ;Receive error codes
       RET = EKI_GetInt(configFileName[], "res/return_code/@value", RESULT.VALUE)
@@ -480,10 +504,12 @@ END
       FOR j=1 to NUMDETECTEDGRASPS
          RET = EKI_GetFrame(configFileName[], "res/grasps/le/pose", POSE)
          DETECTEDGRASPS[j] = POSE
-         ; For the first grasp (j=1), also read its gripper_id
+         ; For the first grasp (j=1), also read its gripper_id and grasp_id
          IF j == 1 THEN
             ; Read the gripper_id associated with the first grasp
             RET = EKI_GetString(configFileName[], "res/grasps/le/gripper_id", RECEIVED_GRIPPER_ID[])
+            ; Read the id (grasp_id) associated with the first grasp
+            RET = EKI_GetString(configFileName[], "res/grasps/le/id", RECEIVED_GRASP_ID[])
          ENDIF
       ENDFOR
       RET = EKI_ClearBuffer(configFileName[], "res")
