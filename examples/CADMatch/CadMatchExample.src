@@ -1,8 +1,5 @@
 &ACCESS RVP
-&REL 118
-&PARAM EDITMASK = *
-&PARAM TEMPLATE = C:\KRC\Roboter\Template\vorgabe
-&PARAM DISKPATH = KRC:\R1\Program\RC\NewEkiExamples
+&REL 118]
 DEF CadMatchExample()
    ;------------------------------------------------------------------------
    ; CADMatch Example Program for Roboception rc_visard/rc_cube
@@ -18,11 +15,13 @@ DEF CadMatchExample()
    ; 1. The service names MUST match exactly with your EKI XML configuration files
    ; 2. Modify only the parameters in this section before running the program
    ; 3. Teach the STARTPOSE and PLACEPOSE positions in the .dat file
-   ; 4. Define the GRIP() and RELEASE() functions for your specific gripper
+   ; 4. Define the GripperClose() and GripperOpen() functions for your specific gripper
    ;
    ; HOW THE PROGRAM WORKS:
    ; - The program calls the CADMatch detection service which returns an array of possible grasps
    ; - Currently, only the first grasp (index 1) is used for the pick-and-place sequence
+   ; - The program reads the gripper_id associated with the first grasp.
+   ; - Based on the gripper_id, a target opening value is determined.
    ; - If detection fails, the program will retry up to MAX_DETECTION_RETRIES times
    ; - After successful detection, the robot will:
    ;   a) Move to a pre-grasp position above the detected object
@@ -36,6 +35,11 @@ DEF CadMatchExample()
    ;------------------------------------------------------------------------
    DECL INT MAX_DETECTION_RETRIES
    DECL INT RETRY_COUNT
+   DECL REAL targetOpening      ; Calculated target opening for the gripper
+   DECL REAL defaultOpening     ; Default opening value
+   DECL CHAR tempMsg[120]       ; Temporary buffer for constructing messages
+   DECL STATE_T State           ; State variable for SWRITE
+   DECL INT Offset              ; Offset variable for SWRITE
    
    ; Service name - same as the EKI service name
    ; TODO: Change this to the correct service name - could be "sensor_a_pipeline_1_rc_cadmatch-detect_object"
@@ -44,7 +48,7 @@ DEF CadMatchExample()
    serviceNameStop[] = "rc_cadmatch-stop"
    
    ; Detection configuration parameters
-   TEMPLATE_ID[] = "CADMatchTemplate"      ; CAD template to match
+   TEMPLATE_ID[] = "Template_Name"         ; CAD template to match
    POSE_FRAME[] = "external"               ; Reference frame for poses
    LOAD_CARRIER_ID[] = " "                 ; Load carrier ID (Whitespace " " = none)
    ROI_ID[] = " "                          ; Region of interest ID
@@ -63,6 +67,9 @@ DEF CadMatchExample()
    ; Detection retry configuration
    MAX_DETECTION_RETRIES = 3        ; Maximum number of detection attempts
    
+   ; Gripper configuration
+   defaultOpening = 100.0           ; Set your default gripper opening here
+   
    ; Initialize robot and set up interrupts
    ;FOLD INI
       ;FOLD BASISTECH INI
@@ -76,8 +83,8 @@ DEF CadMatchExample()
    INTERRUPT DECL 89 WHEN $FLAG[998] DO RC_NOTIFYRECEIVED(1, 998)
    INTERRUPT ON 89
    
-   ; Move robot to home position
-   RELEASE()
+   ; Move robot to home position and open gripper
+   GripperOpen(defaultOpening)
    MoveToStartPosition()
    
    ; Initialize CADMatch module and open connection to rc_cube
@@ -86,55 +93,80 @@ DEF CadMatchExample()
    RC_SETMSG("Start")
    
    RC_INIT(serviceNameDetect[])
-   RC_OPENCONNECTION(serviceNameDetect[])
    
    ; Main detection and pick-and-place loop
    LOOP
       ; Reset vision results
       ResetDetectedGrasps()
-      
-      ; Configure detection parameters
-      ConfigureDetectParams(serviceNameDetect[], TEMPLATE_ID[], POSE_FRAME[], LOAD_CARRIER_ID[], ROI_ID[], GRIPPER_ID[], PRE_GRASP_OFFSET_X, PRE_GRASP_OFFSET_Y, PRE_GRASP_OFFSET_Z)
+      RECEIVED_GRIPPER_ID[] = "none" ; Reset received ID for this cycle
+      targetOpening = defaultOpening   ; Reset target opening to default
       
       ; Attempt detection with retries
       FOR RETRY_COUNT = 1 TO MAX_DETECTION_RETRIES
-         PerformDetection(serviceNameDetect[])
-         
+         ; Pass all parameters to PerformDetection
+         PerformDetection(serviceNameDetect[], TEMPLATE_ID[], POSE_FRAME[], LOAD_CARRIER_ID[], ROI_ID[], GRIPPER_ID[], PRE_GRASP_OFFSET_X, PRE_GRASP_OFFSET_Y, PRE_GRASP_OFFSET_Z)
+
          IF DetectionSuccessful() THEN
             RC_SETMSG("Detection successful")
             EXIT
          ENDIF
-         
+
          IF RETRY_COUNT < MAX_DETECTION_RETRIES THEN
-            RC_SETMSG("Detection failed, retrying...")
+            ; Display the specific error message from RETURNCODE instead of generic one
+            Offset = 0 ; Reset SWRITE offset
+            SWRITE(tempMsg[], State, Offset, "Detection failed (Attempt %d/%d): %s Retrying...", RETRY_COUNT, MAX_DETECTION_RETRIES, RETURNCODE.MSG[])
+            RC_SETMSG(tempMsg[])
             WAIT SEC 1.0  ; Brief delay between retries
          ENDIF
       ENDFOR
       
       IF DetectionSuccessful() THEN
-         ExecutePickAndPlace(DETECTEDGRASPS[1], PLACEPOSE, MOT_PRE_GRASP_Z_OFFSET, MOT_PRE_PLACE_Z_OFFSET)
+         ; --- Gripper ID Logic ---
+         ; Print the received gripper ID
+         Offset = 0 ; Reset offset for SWRITE
+         SWRITE(tempMsg[], State, Offset, "Received Gripper ID: %s", RECEIVED_GRIPPER_ID[])
+         RC_SETMSG(tempMsg[])
+         
+         ; Determine target opening based on ID
+         IF STRCOMP(RECEIVED_GRIPPER_ID[], "gripper_a", #NOT_CASE_SENS) THEN
+            targetOpening = 100.0
+            RC_SETMSG("Gripper A identified, setting opening to 100.0")
+         ELSE
+            IF STRCOMP(RECEIVED_GRIPPER_ID[], "gripper_b", #NOT_CASE_SENS) THEN
+               targetOpening = 50.0
+               RC_SETMSG("Gripper B identified, setting opening to 50.0")
+            ELSE
+               ; Handle unknown or default case ("none" or other IDs)
+               targetOpening = defaultOpening ; Use default opening
+               RC_SETMSG("Unknown or default gripper ID, using default opening.")
+            ENDIF
+         ENDIF
+         ; --- End Gripper ID Logic ---
+         
+         ExecutePickAndPlace(DETECTEDGRASPS[1], PLACEPOSE, MOT_PRE_GRASP_Z_OFFSET, MOT_PRE_PLACE_Z_OFFSET, targetOpening)
       ELSE
          HandleDetectionFailure()
          EXIT  ; Exit main loop if detection fails after all retries
       ENDIF
    ENDLOOP
    
-   ; Clean up and close connections
+   ; Clean up and stop the service
    RC_STOP(serviceNameStop[])
-   RC_CLOSECONNECTION(serviceNameDetect[], "req")
 END
 
-DEF ExecutePickAndPlace(GRASPPOSE:IN, PLACEPOSE:IN, MOT_PRE_GRASP_Z_OFFSET:IN, MOT_PRE_PLACE_Z_OFFSET:IN)
+DEF ExecutePickAndPlace(GRASPPOSE:IN, PLACEPOSE:IN, MOT_PRE_GRASP_Z_OFFSET:IN, MOT_PRE_PLACE_Z_OFFSET:IN, targetOpening:IN)
    ; Executes a complete pick-and-place operation
    ;
    ; @param GRASPPOSE: Target pose for grasping the object
    ; @param PLACEPOSE: Target pose for placing the object
    ; @param MOT_PRE_GRASP_Z_OFFSET: Vertical offset (mm) for pre-grasp approach position
    ; @param MOT_PRE_PLACE_Z_OFFSET: Vertical offset (mm) for pre-place approach position
+   ; @param targetOpening: The calculated opening value for the gripper
    
    DECL FRAME GRASPPOSE
    DECL E6POS PLACEPOSE
    DECL REAL MOT_PRE_GRASP_Z_OFFSET, MOT_PRE_PLACE_Z_OFFSET
+   DECL REAL targetOpening
    
    ; Internal pose calculations
    DECL FRAME PREGRASPPOSE, PREPLACEPOSE
@@ -152,12 +184,19 @@ DEF ExecutePickAndPlace(GRASPPOSE:IN, PLACEPOSE:IN, MOT_PRE_GRASP_Z_OFFSET:IN, M
    ; Move to pre-grasp position
    SPTP PREGRASPPOSE WITH $VEL_AXIS[1] = SVEL_JOINT(rptpVelocityStd), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO), $IPO_MODE = SIPO_MODE(fDatDefault.IPO_FRAME), $LOAD = SLOAD(fDatDefault.TOOL_NO), $ACC_AXIS[1] = SACC_JOINT(pDatDefault), $APO = SAPO_PTP(pDatDefault), $GEAR_JERK[1] = SGEAR_JERK(pDatDefault)
    
+   ; Open gripper before final approach (optional, might be already open)
+   ; GripperOpen(targetOpening) ; Consider if needed here or rely on initial open
+   
    ; Move to grasp position
    SLIN GRASPPOSE WITH $VEL = SVEL_CP(rlinVelocitySlow, , lDatDefault), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO)
    
    ; Activate gripper
-   RC_SETMSG("Grasping object...")
-   GRIP()
+   GripperClose()
+   
+   ; Add a small wait if needed for gripper to physically close
+   WAIT SEC 0.5 ; Adjust timing as needed
+   
+   ; Optional: Add grasp check logic here if available for your gripper
    
    ; Move back to pre-grasp position
    SLIN PREGRASPPOSE WITH $VEL = SVEL_CP(rlinVelocityStd, , lDatDefault), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO)
@@ -179,8 +218,10 @@ DEF ExecutePickAndPlace(GRASPPOSE:IN, PLACEPOSE:IN, MOT_PRE_GRASP_Z_OFFSET:IN, M
    ;ENDFOLD
    
    ; Release object
-   RC_SETMSG("Releasing object...")
-   RELEASE()
+   GripperOpen(targetOpening)
+   
+   ; Add a small wait if needed for gripper to physically open
+   WAIT SEC 0.5 ; Adjust timing as needed
    
    ; Move back to pre-place position
    SLIN PREPLACEPOSE WITH $VEL = SVEL_CP(rlinVelocityStd, , lDatDefault), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO)
@@ -196,17 +237,33 @@ DEF MoveToStartPosition()
    ;ENDFOLD
 END
 
-DEF GRIP()
-   ;DEFINE
+DEF GripperClose()
+   ; Implement gripper closing logic here
+   RC_SETMSG("Gripper closing")
+   ; Example: SetOutput(GripperCloseSignal, TRUE)
+   ; Example: SetOutput(GripperOpenSignal, FALSE)
+   WAIT SEC 0.1 ; Add delay if needed
 END
 
-DEF RELEASE()
-   ;DEFINE
+DEF GripperOpen(targetOpening:IN)
+   ; Implement gripper opening logic here, using the targetOpening value
+   DECL REAL targetOpening
+   DECL KrlMsgPar_T params[1]
+   
+   ; Setup parameter for message
+   params[1] = {par_type #VALUE, par_real 0}
+   params[1].par_real = targetOpening
+   
+   RC_SETMSG_PARAM("Gripper opening to %1", params[])
+   ; Example: SetAnalogOutput(GripperPositionSignal, targetOpening)
+   ; Example: SetOutput(GripperCloseSignal, FALSE)
+   ; Example: SetOutput(GripperOpenSignal, TRUE)
+   WAIT SEC 0.1 ; Add delay if needed
 END
 
 ; ---- Roboception Functions ----
 ;FOLD ROBOCEPTION_FUNCTIONS
-   DEF ConfigureDetectParams(serviceNameDetect[]:IN, TEMPLATE_ID[]:IN, POSE_FRAME[]:IN, LOAD_CARRIER_ID[]:IN, ROI_ID[]:IN, GRIPPER_ID[]:IN, PRE_GRASP_OFFSET_X:IN, PRE_GRASP_OFFSET_Y:IN, PRE_GRASP_OFFSET_Z:IN)
+   DEF PerformDetection(serviceNameDetect[]:IN, TEMPLATE_ID[]:IN, POSE_FRAME[]:IN, LOAD_CARRIER_ID[]:IN, ROI_ID[]:IN, GRIPPER_ID[]:IN, PRE_GRASP_OFFSET_X:IN, PRE_GRASP_OFFSET_Y:IN, PRE_GRASP_OFFSET_Z:IN)
       DECL CHAR serviceNameDetect[]
       DECL EKI_STATUS RET
       DECL CHAR TEMPLATE_ID[]
@@ -248,17 +305,24 @@ END
       IF PRE_GRASP_OFFSET_Z <> 0.0 THEN
          RET = EKI_SetReal(serviceNameDetect[], "req/args/collision_detection/pre_grasp_offset/@z", PRE_GRASP_OFFSET_Z)
       ENDIF
-   END
-   
-   DEF PerformDetection(serviceNameDetect[]:IN)
-      DECL CHAR serviceNameDetect[]
-      DECL EKI_Status RET
       
-      ; Synchronize advance run pointer
+      ; Open connection before sending request
+      RC_OPENCONNECTION(serviceNameDetect[])
+      
+      ; Force synchronization
       WAIT SEC 0
+      
+      ; Send request
       RET = EKI_Send(serviceNameDetect[], "req")
+      
+      ; Wait for response
       RC_WAITFORRESULT(1)
+      
+      ; Read results
       RC_READRESULT(serviceNameDetect[])
+      
+      ; Close the connection after reading results
+      RC_CLOSECONNECTION(serviceNameDetect[], "req")
    END
    
    DEFFCT BOOL DetectionSuccessful()
@@ -395,6 +459,7 @@ END
       
       POSE = POSE_IDENT
       RESULT={VALUE 0, MSG[] "0"}
+      RECEIVED_GRIPPER_ID[] = "none"
       
       ;Receive error codes
       RET = EKI_GetInt(configFileName[], "res/return_code/@value", RESULT.VALUE)
@@ -415,6 +480,11 @@ END
       FOR j=1 to NUMDETECTEDGRASPS
          RET = EKI_GetFrame(configFileName[], "res/grasps/le/pose", POSE)
          DETECTEDGRASPS[j] = POSE
+         ; For the first grasp (j=1), also read its gripper_id
+         IF j == 1 THEN
+            ; Read the gripper_id associated with the first grasp
+            RET = EKI_GetString(configFileName[], "res/grasps/le/gripper_id", RECEIVED_GRIPPER_ID[])
+         ENDIF
       ENDFOR
       RET = EKI_ClearBuffer(configFileName[], "res")
    END
