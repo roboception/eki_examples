@@ -1,5 +1,7 @@
 &ACCESS RVO
-&PARAM DISKPATH = KRC:\R1\Program\RC\NewEkiExamples
+&REL 1
+&PARAM DISKPATH = KRC:\R1\Program
+
 DEF EstimateRobotPose()
    ;------------------------------------------------------------------------
    ; Robot Pose Estimation Example for Roboception rc_visard/rc_cube
@@ -185,7 +187,7 @@ DEF RC_SETMSG_PARAM(msg[]:IN, params:OUT)
    DECL INT Handle, len, count
    DECL EKrlMsgType Type
    
-   name={modul[] "RC", nr 1, msg_txt[] " "}
+   name={modul[] "rc", nr 1, msg_txt[] " "}
    
    Type=#notify
    
@@ -215,9 +217,9 @@ END
 ;FOLD RC_OPENCONNECTION
    DEF RC_OPENCONNECTION(configFileName[]:IN)
       DECL CHAR configFileName[]
-      DECL EKI_STATUS RET
+      DECL EKI_Status RET
       RET = EKI_Open(configFileName[])
-      EKI_CHECK(RET,#quit)    ; This will quit if connection fails
+      EKI_CHECK(RET,#Quit)    ; This will quit if connection fails
    END
 ;ENDFOLD (RC_OPENCONNECTION)
 
@@ -238,12 +240,13 @@ END
       
       WAIT FOR $FLAG[WaitFlag] OR NOT $FLAG[RCEkiAliveFlagNo]
       
-      ;Eki-connection has been closed 
+      ; EKI-connection has been closed 
       IF(NOT $FLAG[RCEkiAliveFlagNo]) THEN
          RC_SETMSG("EKI connection lost")
       ENDIF
       
       $FLAG[WaitFlag] = FALSE
+      WAIT SEC 0
    END
 ;ENDFOLD (RC_WAITFORRESULT)
 
