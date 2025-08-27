@@ -1,6 +1,7 @@
 &ACCESS RVO
-&REL 8
-&PARAM DISKPATH = KRC:\R1\Program\RC\NewEkiExamples
+&REL 1
+&PARAM DISKPATH = KRC:\R1\Program
+
 DEF ItemPickExample()
    ; ItemPickExample
    ; --------------
@@ -13,16 +14,15 @@ DEF ItemPickExample()
    ; 3. Places successfully picked items at a predefined location
    ; 4. Loops until no more items are detected or program is interrupted
    ;
+   ; ENHANCEMENTS:
+   ; - Clean 3-tier speed hierarchy (High/Medium/Slow) for easy configuration
+   ; - Collision detection support with gripper ID and pre-grasp offsets
+   ; - Proper separation of movement offsets vs. detection offsets
+   ; - Consistent use of .dat file variables for better maintainability
+   ;
    
-   ; Parameters for detection
-   DECL CHAR ITEM_TYPE[32]
-   DECL CHAR POSE_FRAME[32]
-   DECL CHAR LOAD_CARRIER_ID[32]
-   DECL CHAR ROI_ID[32]
-   DECL REAL SUCTION_LENGTH, SUCTION_WIDTH
+   ; Parameters for detection - declared in .dat file
    DECL INT CURRENTITEM, IT
-   DECL INT MAX_DETECTION_RETRIES
-   DECL INT MAX_GRASPS_TO_PROCESS
    
    ; Service name - same as the EKI service name
    ; TODO: Change this to the correct service name - could be "sensor_a_pipeline_1_rc_itempick-compute_grasps"
@@ -34,16 +34,24 @@ DEF ItemPickExample()
    MAX_DETECTION_RETRIES = 5
    
    ; Detection parameters
-   SUCTION_LENGTH = 0.03
-   SUCTION_WIDTH = 0.03
+   SUCTION_LENGTH = 0.09  ; Updated to match EKI specification
+   SUCTION_WIDTH = 0.02   ; Matches EKI specification
    ITEM_TYPE[] = "BAG"  ; "BAG" for bags or " " for any other item
    LOAD_CARRIER_ID[] = " " ; Single space to represent empty/none
    ROI_ID[] = "roi_bags"
    POSE_FRAME[] = "external"
    
+   ; Collision detection parameters - use " " to skip sending
+   GRIPPER_ID[] = "SingleVacuum"    ; Gripper identifier for collision detection
+   DETECTION_PRE_GRASP_X_OFFSET = 0.0  ; Detection pre-grasp offset in X direction (m) - SEPARATE from movement offset
+   DETECTION_PRE_GRASP_Y_OFFSET = 0.0  ; Detection pre-grasp offset in Y direction (m) - SEPARATE from movement offset  
+   DETECTION_PRE_GRASP_Z_OFFSET = -10  ; Detection pre-grasp offset in Z direction (mm) - SEPARATE from movement offset
+   ; NOTE: Movement uses PRE_GRASP_Z_OFFSET, detection uses DETECTION_PRE_GRASP_Z_OFFSET
+   ; These are two different parameters that can be configured independently!
+   
    ; Gripping parameters
-   PRE_GRASP_Z_OFFSET = 200   ; in mm
-   PRE_PLACE_Z_OFFSET = 200   ; in mm
+   PRE_GRASP_Z_OFFSET = -10   ; in mm (negative for approach)
+   PRE_PLACE_Z_OFFSET = 100   ; in mm (positive for lift)
    
    ;FOLD INI;%{PE}
       ;FOLD BASISTECH INI
@@ -56,14 +64,13 @@ DEF ItemPickExample()
    INTERRUPT DECL 89 WHEN $flag[998] DO RC_NOTIFYRECEIVED(1, 998)
    INTERRUPT ON 89
    
-   ;FOLD SPTP home vel=100 % DEFAULT ;%{pe}
-      SPTP XHOME WITH $VEL_AXIS[1] = SVEL_JOINT(rptpVelocityStd)
+   ;FOLD SPTP home vel=75 % HIGH Speed Transit ;%{pe}
+      SPTP XHOME WITH $VEL_AXIS[1] = SVEL_JOINT(ptpSpeedHigh)
    ;ENDFOLD
    
    GRIPPERBLOW()
    
    RC_INIT(serviceNameDetect[])
-   RC_OPENCONNECTION(serviceNameDetect[])
    
    ;
    ; Main program loop
@@ -80,8 +87,8 @@ DEF ItemPickExample()
       ;
       FOR IT = 1 TO MAX_DETECTION_RETRIES
          ; Configure detection parameters using helper function
-         ; Sets up item type, pose frame, load carrier, ROI, and suction surface parameters
-         RC_CONFIGUREPARAMS(serviceNameDetect[], ITEM_TYPE[], POSE_FRAME[], LOAD_CARRIER_ID[], ROI_ID[], SUCTION_LENGTH, SUCTION_WIDTH)
+         ; Sets up item type, pose frame, load carrier, ROI, suction surface, and collision detection parameters
+         RC_CONFIGUREPARAMS(serviceNameDetect[], ITEM_TYPE[], POSE_FRAME[], LOAD_CARRIER_ID[], ROI_ID[], SUCTION_LENGTH, SUCTION_WIDTH, GRIPPER_ID[], DETECTION_PRE_GRASP_X_OFFSET, DETECTION_PRE_GRASP_Y_OFFSET, DETECTION_PRE_GRASP_Z_OFFSET)
          
          ; Perform detection
          ; Sends detection request to vision system and waits for response
@@ -123,10 +130,9 @@ DEF ItemPickExample()
    ENDLOOP
    
    ; Clean up and return home
-   RC_CLOSECONNECTION(serviceNameDetect[], "req")
    
-   ;FOLD SPTP home vel=100 % DEFAULT ;%{pe}
-      SPTP XHOME WITH $VEL_AXIS[1] = SVEL_JOINT(rptpVelocityStd)
+   ;FOLD SPTP home vel=75 % HIGH Speed Transit ;%{pe}
+      SPTP XHOME WITH $VEL_AXIS[1] = SVEL_JOINT(ptpSpeedHigh)
    ;ENDFOLD
 END
 
@@ -161,24 +167,29 @@ DEF ExecutePickAndPlace(GRASPPOSE:IN, PLACEPOSE:IN, PRE_GRASP_Z_OFFSET:IN, PRE_P
    PREPLACEPOSE.b = PLACEPOSE.b
    PREPLACEPOSE.c = PLACEPOSE.c
    
-   ; Move over bin
-   SPTP OVERBINPOSE WITH $VEL_AXIS[1] = SVEL_JOINT(rptpVelocityStd)
+   ; Move over bin - HIGH speed transit
+   SPTP OVERBINPOSE WITH $VEL_AXIS[1] = SVEL_JOINT(ptpSpeedHigh)
    
-   SLIN PREGRASPPOSE with $vel = svel_cp(rlinVelocityStd, , lDatDefault), $tool = stool2(fDatDefault), $base = sbase(fDatDefault.base_no)
+   ; Move to pre-grasp - MEDIUM speed approach
+   SLIN PREGRASPPOSE with $vel = svel_cp(linSpeedMedium, , lDatMedium), $tool = stool2(fDatDefault), $base = sbase(fDatDefault.base_no)
    
-   SLIN GRASPPOSE with $vel = svel_cp(rlinVelocitySlow, , lDatDefault), $tool = stool2(fDatDefault), $base = sbase(fDatDefault.base_no)
+   ; Move to grasp - SLOW speed for careful in-bin movement
+   SLIN GRASPPOSE with $vel = svel_cp(linSpeedSlow, , lDatSlow), $tool = stool2(fDatDefault), $base = sbase(fDatDefault.base_no)
    
    RC_SETMSG("Grasp position reached. Suctioning...")
    GRIPPERSUCK()
    
-   SLIN PREGRASPPOSE with $vel = svel_cp(rlinVelocityStd, , lDatDefault), $tool = stool2(fDatDefault), $base = sbase(fDatDefault.base_no)
+   ; Exit bin - SLOW speed for careful movement out of bin
+   SLIN PREGRASPPOSE with $vel = svel_cp(linSpeedSlow, , lDatSlow), $tool = stool2(fDatDefault), $base = sbase(fDatDefault.base_no)
    
    IF GripperHasVacuumIO THEN
-      ; Execute place sequence
-      SPTP PREPLACEPOSE with $vel_axis[1] = svel_joint(rptpVelocityStd), $tool = stool2(fDatDefault), $base = sbase(fDatDefault.base_no), $ipo_mode = sipo_mode(fDatDefault.ipo_frame), $load = sload(fDatDefault.tool_no), $acc_axis[1] = sacc_joint(pDatDefault), $apo = sapo_ptp(pDatDefault), $gear_jerk[1] = sgear_jerk(pDatDefault), $collmon_tol_pro[1] = use_cm_pro_values(0)
-      SLIN PLACEPOSE with $vel = svel_cp(rlinVelocitySlow, , lDatDefault), $tool = stool2(fDatDefault), $base = sbase(fDatDefault.base_no)
+      ; Execute place sequence - HIGH speed transit to place area
+      SPTP PREPLACEPOSE with $vel_axis[1] = svel_joint(ptpSpeedHigh), $tool = stool2(fDatDefault), $base = sbase(fDatDefault.base_no), $ipo_mode = sipo_mode(fDatDefault.ipo_frame), $load = sload(fDatDefault.tool_no), $acc_axis[1] = sacc_joint(pDatHigh), $apo = SAPO_PTP(pDatHigh), $gear_jerk[1] = sgear_jerk(pDatHigh), $collmon_tol_pro[1] = use_cm_pro_values(0)
+      ; Place item - MEDIUM speed for controlled placement
+      SLIN PLACEPOSE with $vel = svel_cp(linSpeedMedium, , lDatMedium), $tool = stool2(fDatDefault), $base = sbase(fDatDefault.base_no)
       GRIPPERBLOW()
-      SPTP PREPLACEPOSE with $vel_axis[1] = svel_joint(rptpVelocityStd), $tool = stool2(fDatDefault), $base = sbase(fDatDefault.base_no), $ipo_mode = sipo_mode(fDatDefault.ipo_frame), $load = sload(fDatDefault.tool_no), $acc_axis[1] = sacc_joint(pDatDefault), $apo = sapo_ptp(pDatDefault), $gear_jerk[1] = sgear_jerk(pDatDefault), $collmon_tol_pro[1] = use_cm_pro_values(0)
+      ; Return from place - HIGH speed transit movement
+      SPTP PREPLACEPOSE with $vel_axis[1] = svel_joint(ptpSpeedHigh), $tool = stool2(fDatDefault), $base = sbase(fDatDefault.base_no), $ipo_mode = sipo_mode(fDatDefault.ipo_frame), $load = sload(fDatDefault.tool_no), $acc_axis[1] = sacc_joint(pDatHigh), $apo = SAPO_PTP(pDatHigh), $gear_jerk[1] = sgear_jerk(pDatHigh), $collmon_tol_pro[1] = use_cm_pro_values(0)
    ELSE
       RC_SETMSG("No vacuum - moving on...")
       GRIPPERBLOW()
@@ -206,23 +217,27 @@ END
 ; ---- Roboception Functions ----
 ;FOLD ROBOCEPTION_FUNCTIONS
    ;FOLD RC_CONFIGUREPARAMS
-      DEF RC_CONFIGUREPARAMS(serviceNameDetect[]:IN, ITEM_TYPE[]:IN, POSE_FRAME[]:IN, LOAD_CARRIER_ID[]:IN, ROI_ID[]:IN, SUCTION_LENGTH:IN, SUCTION_WIDTH:IN)
+      DEF RC_CONFIGUREPARAMS(serviceNameDetect[]:IN, ITEM_TYPE[]:IN, POSE_FRAME[]:IN, LOAD_CARRIER_ID[]:IN, ROI_ID[]:IN, SUCTION_LENGTH:IN, SUCTION_WIDTH:IN, GRIPPER_ID[]:IN, DETECTION_PRE_GRASP_X_OFFSET:IN, DETECTION_PRE_GRASP_Y_OFFSET:IN, DETECTION_PRE_GRASP_Z_OFFSET:IN)
          DECL CHAR serviceNameDetect[]
          DECL CHAR ITEM_TYPE[]
          DECL CHAR POSE_FRAME[]
          DECL CHAR LOAD_CARRIER_ID[]
          DECL CHAR ROI_ID[]
+         DECL CHAR GRIPPER_ID[]
          DECL REAL SUCTION_LENGTH, SUCTION_WIDTH
+         DECL REAL DETECTION_PRE_GRASP_X_OFFSET, DETECTION_PRE_GRASP_Y_OFFSET, DETECTION_PRE_GRASP_Z_OFFSET
          DECL EKI_STATUS RET
          DECL E6POS flangePose
          
          flangePose = $POS_ACT_MES : INV_POS($TOOL)
          
+         ; Core detection parameters
          RET = EKI_SETREAL(serviceNameDetect[], "req/args/suction_surface_length", SUCTION_LENGTH)
          RET = EKI_SETREAL(serviceNameDetect[], "req/args/suction_surface_width", SUCTION_WIDTH)
          RET = EKI_SETSTRING(serviceNameDetect[], "req/args/pose_frame", POSE_FRAME[])
          RET = EKI_SETFRAME(serviceNameDetect[], "req/args/robot_pose", flangePose)
          
+         ; Conditional parameters - send only if not empty
          IF ITEM_TYPE[1] <> " " THEN
             RET = EKI_SETSTRING(serviceNameDetect[], "req/args/item_models/le/type", ITEM_TYPE[])
          ENDIF
@@ -234,98 +249,117 @@ END
          IF LOAD_CARRIER_ID[1] <> " " THEN
             RET = EKI_SETSTRING(serviceNameDetect[], "req/args/load_carrier_id", LOAD_CARRIER_ID[])
          ENDIF
+         
+         ; Collision detection parameters - send only if not empty
+         IF GRIPPER_ID[1] <> " " THEN
+            RET = EKI_SETSTRING(serviceNameDetect[], "req/args/gripper_id", GRIPPER_ID[])
+         ENDIF
+         
+         ; Pre-grasp offset parameters (for collision detection)
+         IF DETECTION_PRE_GRASP_X_OFFSET <> 0.0 THEN
+            RET = EKI_SETREAL(serviceNameDetect[], "req/args/pre_grasp_offset/x", DETECTION_PRE_GRASP_X_OFFSET)
+         ENDIF
+         
+         IF DETECTION_PRE_GRASP_Y_OFFSET <> 0.0 THEN
+            RET = EKI_SETREAL(serviceNameDetect[], "req/args/pre_grasp_offset/y", DETECTION_PRE_GRASP_Y_OFFSET)
+         ENDIF
+         
+         IF DETECTION_PRE_GRASP_Z_OFFSET <> 0.0 THEN
+            RET = EKI_SETREAL(serviceNameDetect[], "req/args/pre_grasp_offset/z", DETECTION_PRE_GRASP_Z_OFFSET)
+         ENDIF
       END
    ;ENDFOLD (RC_CONFIGUREPARAMS)
    
    ;FOLD RC_SETMSG
-      DEF RC_SETMSG(msg[]:in)
+      DEF RC_SETMSG(msg[]:IN)
          DECL CHAR msg[]
-         DECL krlmsgpar_t PARAMS[3]
+         DECL KrlMsgPar_T PARAMS[3]
          RC_SETMSG_PARAM(msg[], PARAMS[])
       END
    ;ENDFOLD (RC_SETMSG)
    
    ;FOLD RC_SETMSG_PARAM
-      DEF RC_SETMSG_PARAM(msg[]:in, PARAMS:out)
+      DEF RC_SETMSG_PARAM(msg[]:IN, PARAMS:OUT)
          DECL CHAR msg[]
-         DECL krlmsgpar_t PARAMS[]
+         DECL KrlMsgPar_T PARAMS[]
          
-         DECL krlmsg_t name
-         DECL krlmsgopt_t options
+         DECL KrlMsg_T name
+         DECL KrlMsgOpt_T options
          DECL INT handle, len, count
-         DECL ekrlmsgtype type
+         DECL EKrlMsgType type
          
          name={modul[] "rc", nr 1, msg_txt[] " "}
          
          type=#notify
          
-         len=strlen(msg[])
-         if len>0 then
-            if len>80 then
+         len=STRLEN(msg[])
+         IF len>0 THEN
+            IF len>80 THEN
                len=80
-            endif
-            for count=1 to len
+            ENDIF
+            FOR count=1 TO len
                name.msg_txt[count]=msg[count]
             ENDFOR
-         else
+         ELSE
             name.msg_txt[]="parameter msg[] is missing"
-         endif
+         ENDIF
          
-         handle=set_krlmsg(type, name, PARAMS[], options)
+         handle=Set_KrlMsg(type, name, PARAMS[], options)
       END
    ;ENDFOLD (RC_SETMSG_PARAM)
    
    ;FOLD RC_INIT
-      DEF RC_INIT(configfilename[]:in)
+      DEF RC_INIT(configfilename[]:IN)
          DECL CHAR configfilename[]
          DECL EKI_STATUS RET
-         RET = eki_init(configfilename[])
+         RET = EKI_INIT(configfilename[])
       END
    ;ENDFOLD (RC_INIT)
    
    ;FOLD RC_OPENCONNECTION
-      DEF RC_OPENCONNECTION(configfilename[]:in)
+      DEF RC_OPENCONNECTION(configfilename[]:IN)
          DECL CHAR configfilename[]
          DECL EKI_STATUS RET
-         RET = eki_open(configfilename[])
-         eki_check(RET,#quit)
+         RET = EKI_Open(configfilename[])
+         EKI_CHECK(RET,#Quit)
       END
    ;ENDFOLD (RC_OPENCONNECTION)
    
    ;FOLD RC_CLOSECONNECTION
-      DEF RC_CLOSECONNECTION(configfilename[]:in, strplace[]:in)
+      DEF RC_CLOSECONNECTION(configfilename[]:IN, strplace[]:IN)
          DECL CHAR configfilename[]
          DECL CHAR strplace[]
          DECL EKI_STATUS RET
          WAIT SEC 0
-         RET = EKI_CLOSE(configfilename[])
-         RET = EKI_CLEARBUFFER(configfilename[], strplace[])
+         RET = EKI_Close(configfilename[])
+         RET = EKI_ClearBuffer(configfilename[], strplace[])
       END
    ;ENDFOLD (RC_CLOSECONNECTION)
    
    ;FOLD RC_WAITFORRESULT
-      DEF RC_WAITFORRESULT(waitflag:in)
+      DEF RC_WAITFORRESULT(waitflag:IN)
          DECL INT waitflag
          
-         wait for $flag[waitflag] or not $flag[RCEkiAliveFlagNo]
+         WAIT FOR $FLAG[waitflag] OR NOT $FLAG[RCEkiAliveFlagNo]
          
-         ;eki-connection has been closed 
-         IF(NOT $flag[RCEkiAliveFlagNo]) THEN
-            RC_SETMSG("eki connection lost")
+         ; EKI-connection has been closed 
+         IF(NOT $FLAG[RCEkiAliveFlagNo]) THEN
+            RC_SETMSG("EKI connection lost")
          ENDIF
          
-         $flag[waitflag] = false
+         $FLAG[waitflag] = FALSE
+         WAIT SEC 0
       END
    ;ENDFOLD (RC_WAITFORRESULT)
    
-   ;FOLD rc_notifyreceived
-      DEF rc_notifyreceived(waitflag:in, eofresulflag:in)
+   ;FOLD RC_NOTIFYRECEIVED
+      DEF RC_NOTIFYRECEIVED(waitflag:IN, eofresulflag:IN)
          DECL INT waitflag
          DECL INT eofresulflag
-         $flag[eofresulflag]=false
-         $flag[waitflag]=true
+         $FLAG[eofresulflag]=FALSE
+         $FLAG[waitflag]=TRUE
       END
-   ;ENDFOLD (rc_notifyreceived)
+   ;ENDFOLD (RC_NOTIFYRECEIVED)
    
    ;FOLD RC_READRESULT
       DEF RC_READRESULT(configFileName[]:IN)
@@ -334,7 +368,7 @@ END
          DECL EKI_STATUS RET
          DECL INT j
          DECL FRAME POSE
-         DECL krlmsgpar_t par[3]
+         DECL KrlMsgPar_T par[3]
          
          POSE = POSE_IDENT
          
@@ -388,11 +422,21 @@ END
       DECL CHAR serviceNameDetect[]
       DECL EKI_Status RET
       
+      ; Open connection before sending request
+      RC_OPENCONNECTION(serviceNameDetect[])
+      
       ; Synchronize advance run pointer
       WAIT SEC 0
+      
+      ; Send request
       RET = EKI_Send(serviceNameDetect[], "req")
+      
+      ; Wait for response and read results
       RC_WAITFORRESULT(1)
       RC_READRESULT(serviceNameDetect[])
+      
+      ; Close the connection after reading results
+      RC_CLOSECONNECTION(serviceNameDetect[], "req")
    END
    
    DEF LogGraspInfo(currentGrasp:IN, pose:IN)

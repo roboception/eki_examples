@@ -1,5 +1,7 @@
-&ACCESS RVP
-&REL 118]
+&ACCESS RVO
+&REL 1
+&PARAM DISKPATH = KRC:\R1\Program
+
 DEF CadMatchExample()
    ;------------------------------------------------------------------------
    ; CADMatch Example Program for Roboception rc_visard/rc_cube
@@ -154,11 +156,11 @@ DEF CadMatchExample()
          
          IF STRCOMP(RECEIVED_GRASP_ID[], "grasp_1", #NOT_CASE_SENS) THEN
             selectedPlacePose = PLACEPOSE1 ; Assumes PLACEPOSE1 is defined in .dat
-            RC_SETMSG("Grasp ID 'grasp_1' detected, using PLACEPOSE1.")
+            RC_SETMSG("Grasp ID grasp_1 detected, using PLACEPOSE1.")
          ELSE
             IF STRCOMP(RECEIVED_GRASP_ID[], "grasp_2", #NOT_CASE_SENS) THEN
                selectedPlacePose = PLACEPOSE2 ; Assumes PLACEPOSE2 is defined in .dat
-               RC_SETMSG("Grasp ID 'grasp_2' detected, using PLACEPOSE2.")
+               RC_SETMSG("Grasp ID grasp_2 detected, using PLACEPOSE2.")
             ELSE
                selectedPlacePose = PLACEPOSE ; Use original PLACEPOSE as default
                RC_SETMSG("Unknown or default grasp ID, using default PLACEPOSE.")
@@ -408,7 +410,7 @@ END
       DECL INT Handle, len, count
       DECL EKrlMsgType Type
       
-      name={modul[] "RC", nr 1, msg_txt[] " "}
+      name={modul[] "rc", nr 1, msg_txt[] " "}
       
       Type=#notify
       

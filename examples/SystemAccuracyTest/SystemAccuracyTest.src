@@ -1,6 +1,7 @@
-&ACCESS RVP
-&REL 6
-&PARAM DISKPATH = KRC:\R1\Program\RC\NewEkiExamples
+&ACCESS RVO
+&REL 1
+&PARAM DISKPATH = KRC:\R1\Program
+
 DEF SystemAccuracyTest()
    ; SystemAccuracyTest
    ; -----------------
@@ -12,7 +13,7 @@ DEF SystemAccuracyTest()
    ; 5. Returns to home position after completion
    ;
    
-   ; EKI
+   ; EKI / Service name - same as the EKI service name
    DECL CHAR serviceNameDetect[64]
    DECL EKI_Status RET
    DECL KrlMsgPar_T par[3]
@@ -36,9 +37,9 @@ DEF SystemAccuracyTest()
    INTERRUPT ON 89
    
    ; Initialize EKI connection
-   serviceNameDetect[] = "new_lab_1_rc_april_tag_detect-detect"
+   ; TODO: Change this to the correct service name - could be "sensor_a_pipeline_1_rc_april_tag_detect-detect"
+   serviceNameDetect[] = "rc_april_tag_detect-detect"
    RC_INIT(serviceNameDetect[])
-   RC_OPENCONNECTION(serviceNameDetect[])   
    
    LOOP
       ; Move to home position
@@ -48,16 +49,8 @@ DEF SystemAccuracyTest()
       HALT
       
       ; Detect AprilTags
-      flangePose = $POS_ACT_MES : INV_POS($TOOL)
-      RET = EKI_SetString(serviceNameDetect[], "req/args/pose_frame", "external")
-      RET = EKI_SetFrame(serviceNameDetect[], "req/args/robot_pose", flangePose)
-
-      ; Synchronize advance run pointer
-      WAIT SEC 0
-      RET = EKI_Send(serviceNameDetect[], "req")
-      
-      RC_WAITFORRESULT(1)
-      RC_READRESULT(serviceNameDetect[])
+      ConfigureDetection(serviceNameDetect[])
+      PerformDetection(serviceNameDetect[])
       
       ; Check detection result
       IF DetectionSuccessful() THEN
@@ -109,7 +102,7 @@ DEF SystemAccuracyTest()
       ENDIF
    ENDLOOP
    
-   RC_CLOSECONNECTION(serviceNameDetect[], "req")
+   ; No explicit close here; PerformDetection handles connection lifecycle
 END
 
 ; ---- Roboception Functions ----
@@ -137,11 +130,21 @@ END
       DECL CHAR serviceNameDetect[]
       DECL EKI_Status RET
       
+      ; Open connection before sending request
+      RC_OPENCONNECTION(serviceNameDetect[])
+      
       ; Synchronize advance run pointer
       WAIT SEC 0
+      
+      ; Send request
       RET = EKI_Send(serviceNameDetect[], "req")
+      
+      ; Wait for response and read results
       RC_WAITFORRESULT(1)
       RC_READRESULT(serviceNameDetect[])
+      
+      ; Close the connection after reading results
+      RC_CLOSECONNECTION(serviceNameDetect[], "req")
    END
    
    DEFFCT BOOL DetectionSuccessful()
@@ -211,7 +214,7 @@ END
       DECL INT Handle, len, count
       DECL EKrlMsgType Type
       
-      name={modul[] "RC", nr 1, msg_txt[] " "}
+      name={modul[] "rc", nr 1, msg_txt[] " "}
       Type=#notify
       
       len=STRLEN(msg[])
@@ -258,6 +261,7 @@ END
          RC_SETMSG("EKI connection lost")
       ENDIF
       $FLAG[WaitFlag] = FALSE
+      WAIT SEC 0
    END
    
    DEF RC_NOTIFYRECEIVED(WAITFLAG:IN, EOFRESULFLAG:IN)

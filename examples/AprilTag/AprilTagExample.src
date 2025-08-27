@@ -1,7 +1,7 @@
-&ACCESS RVP
-&REL 32
-&PARAM EDITMASK = *
-&PARAM TEMPLATE = C:\KRC\Roboter\Template\vorgabe
+&ACCESS RVO
+&REL 1
+&PARAM DISKPATH = KRC:\R1\Program
+
 DEF AprilTagExample()
    ; AprilTagExample
    ; --------------
@@ -37,7 +37,6 @@ DEF AprilTagExample()
    RC_SETMSG("Starting AprilTag detection")
    
    RC_INIT(serviceNameDetect[])
-   RC_OPENCONNECTION(serviceNameDetect[])
    
    ; Configure and perform detection
    ConfigureDetection(serviceNameDetect[])
@@ -50,8 +49,7 @@ DEF AprilTagExample()
       HandleDetectionFailure()
    ENDIF
    
-   ; Cleanup and close connections
-   RC_CLOSECONNECTION(serviceNameDetect[], "req")
+   ; Cleanup
    RC_SETMSG("Detection finished")
    
    ; Return to home position
@@ -109,11 +107,21 @@ END
       DECL CHAR serviceNameDetect[]
       DECL EKI_Status RET
       
+      ; Open connection before sending request
+      RC_OPENCONNECTION(serviceNameDetect[])
+      
       ; Synchronize advance run pointer
       WAIT SEC 0
+      
+      ; Send request
       RET = EKI_Send(serviceNameDetect[], "req")
+      
+      ; Wait for response and read results
       RC_WAITFORRESULT(1)
       RC_READRESULT(serviceNameDetect[])
+      
+      ; Close the connection after reading results
+      RC_CLOSECONNECTION(serviceNameDetect[], "req")
    END
    
    DEFFCT BOOL DetectionSuccessful()
@@ -183,7 +191,7 @@ END
       DECL INT Handle, len, count
       DECL EKrlMsgType Type
       
-      name={modul[] "RC", nr 1, msg_txt[] " "}
+      name={modul[] "rc", nr 1, msg_txt[] " "}
       Type=#notify
       
       len=STRLEN(msg[])
@@ -230,6 +238,7 @@ END
          RC_SETMSG("EKI connection lost")
       ENDIF
       $FLAG[WaitFlag] = FALSE
+      WAIT SEC 0
    END
    
    DEF RC_NOTIFYRECEIVED(WAITFLAG:IN, EOFRESULFLAG:IN)

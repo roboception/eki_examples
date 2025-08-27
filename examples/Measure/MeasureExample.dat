@@ -1,8 +1,7 @@
 &ACCESS RVO
-&REL 118
-&PARAM EDITMASK = *
-&PARAM TEMPLATE = C:\KRC\Roboter\Template\vorgabe
-&PARAM DISKPATH = KRC:\R1\Program\Magna Tech Day\Measure
+&REL 1
+&PARAM DISKPATH = KRC:\R1\Program
+
 DEFDAT MeasureExample
    
    ;FOLD EXTERNAL DECLARATIONS;%{PE}%MKUKATPBASIS,%CEXT,%VCOMMON,%P

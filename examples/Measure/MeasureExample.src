@@ -1,8 +1,7 @@
-&ACCESS RVP
-&REL 118
-&PARAM EDITMASK = *
-&PARAM TEMPLATE = C:\KRC\Roboter\Template\vorgabe
-&PARAM DISKPATH = KRC:\R1\Program\RC\NewEkiExamples
+&ACCESS RVO
+&REL 1
+&PARAM DISKPATH = KRC:\R1\Program
+
 DEF MeasureExample()
    ; MeasureExample
    ; -------------
@@ -41,7 +40,6 @@ DEF MeasureExample()
    INTERRUPT ON 89
    
    RC_INIT(serviceNameDetect[])
-   RC_OPENCONNECTION(serviceNameDetect[])
    
    LOOP
       
@@ -49,34 +47,11 @@ DEF MeasureExample()
       WAIT SEC 0
       ResetData()
       
-      ;****************************************
-      ; Mandatory application parameters:
-      ; ---------------------------------
-      ; Pose Frame, sensor or robot (external) [Default: "external"]
-      ; Cell Count, number of seaparte cells [Default: X 1, Y 1]
-      ; Robot pose, only mandatory for robot mounted camera
-      ;****************************************
-      RET = EKI_SetString(serviceNameDetect[], "req/args/pose_frame", "external")
-      RET = EKI_SetInt(serviceNameDetect[], "req/args/cell_count/@x", 1)
-      RET = EKI_SetInt(serviceNameDetect[], "req/args/cell_count/@y", 1)
+      ; Configure detection
+      ConfigureDetection(serviceNameDetect[])
       
-      flangePose = $POS_ACT_MES : INV_POS($TOOL)
-      RET = EKI_SetFrame(serviceNameDetect[], "req/args/robot_pose", flangePose)
-      
-      ;****************************************
-      ; Optional application parameters:
-      ; --------------------------------
-      ;RET = EKI_SetString(serviceNameDetect[], "req/args/data_acquisition_mode", "CAPTURE_NEW")
-      ;RET = EKI_SetInt(serviceNameDetect[], "req/args/region_of_interest_2d/@height", 0)
-      ;RET = EKI_SetInt(serviceNameDetect[], "req/args/region_of_interest_2d/@offset_x", 0)
-      ;RET = EKI_SetInt(serviceNameDetect[], "req/args/region_of_interest_2d/@offset_y", 0)
-      ;RET = EKI_SetInt(serviceNameDetect[], "req/args/region_of_interest_2d/@width", 0)
-      ;RET = EKI_SetString(serviceNameDetect[], "req/args/region_of_interest_2d_id", "Roi")      
-      
-      ; Send trigger and wait for vision results
-      RET = EKI_Send(serviceNameDetect[], "req")
-      RC_WAITFORRESULT(1)
-      RC_READRESULT(serviceNameDetect[])
+      ; Perform detection
+      PerformDetection(serviceNameDetect[])
       
       ; Error handling
       IF (RETURNCODE.VALUE < 0) THEN
@@ -89,12 +64,44 @@ DEF MeasureExample()
       
    ENDLOOP
    
-   RC_CLOSECONNECTION(serviceNameDetect[], "req")
+   ; No explicit close here; PerformDetection handles connection lifecycle
    
 END
-
+ 
 ; ---- Roboception Functions ----
 ;FOLD ROBOCEPTION_FUNCTIONS
+   DEF ConfigureDetection(serviceNameDetect[]:IN)
+      DECL CHAR serviceNameDetect[]
+      DECL EKI_Status RET
+      DECL E6POS flangePose
+      
+      ; Mandatory application parameters
+      RET = EKI_SetString(serviceNameDetect[], "req/args/pose_frame", "external")
+      RET = EKI_SetInt(serviceNameDetect[], "req/args/cell_count/@x", 1)
+      RET = EKI_SetInt(serviceNameDetect[], "req/args/cell_count/@y", 1)
+      
+      flangePose = $POS_ACT_MES : INV_POS($TOOL)
+      RET = EKI_SetFrame(serviceNameDetect[], "req/args/robot_pose", flangePose)
+   END
+
+   DEF PerformDetection(serviceNameDetect[]:IN)
+      DECL CHAR serviceNameDetect[]
+      DECL EKI_Status RET
+      
+      ; Open connection before sending request
+      RC_OPENCONNECTION(serviceNameDetect[])
+      
+      ; Synchronize advance run pointer
+      WAIT SEC 0
+      
+      ; Send trigger and wait for vision results
+      RET = EKI_Send(serviceNameDetect[], "req")
+      RC_WAITFORRESULT(1)
+      RC_READRESULT(serviceNameDetect[])
+      
+      ; Close after reading results
+      RC_CLOSECONNECTION(serviceNameDetect[], "req")
+   END
    
    ;FOLD RC_SETMSG
       DEF RC_SETMSG(msg[]:IN)
@@ -114,7 +121,7 @@ END
          DECL INT Handle, len, count
          DECL EKrlMsgType Type
          
-         name={modul[] "RC", nr 1, msg_txt[] " "}
+         name={modul[] "rc", nr 1, msg_txt[] " "}
          
          Type=#notify
          
