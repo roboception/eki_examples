@@ -1,8 +1,6 @@
-&ACCESS RVO
-&REL 1
-&PARAM DISKPATH = KRC:\R1\Program
-
-DEF HandEyeCalibrationExamp()
+&ACCESS RVP
+&PARAM EDITMASK = *
+DEF HandEyeCalibration()
    ;------------------------------------------------------------------------
    ; Hand-Eye Calibration Example for Roboception rc_visard/rc_cube
    ;

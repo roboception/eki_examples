@@ -1,8 +1,6 @@
-&ACCESS RVO
-&REL 1
-&PARAM DISKPATH = KRC:\R1\Program
-
-DEF ItemPickExample()
+&ACCESS RVP
+&PARAM EDITMASK = *
+DEF ItemPick()
    ; ItemPickExample
    ; --------------
    ; Demonstrates bin-picking using roboception's ItemPick module with continuous detection
@@ -43,15 +41,16 @@ DEF ItemPickExample()
    
    ; Collision detection parameters - use " " to skip sending
    GRIPPER_ID[] = "SingleVacuum"    ; Gripper identifier for collision detection
-   DETECTION_PRE_GRASP_X_OFFSET = 0.0  ; Detection pre-grasp offset in X direction (m) - SEPARATE from movement offset
-   DETECTION_PRE_GRASP_Y_OFFSET = 0.0  ; Detection pre-grasp offset in Y direction (m) - SEPARATE from movement offset  
-   DETECTION_PRE_GRASP_Z_OFFSET = -10  ; Detection pre-grasp offset in Z direction (mm) - SEPARATE from movement offset
-   ; NOTE: Movement uses PRE_GRASP_Z_OFFSET, detection uses DETECTION_PRE_GRASP_Z_OFFSET
-   ; These are two different parameters that can be configured independently!
+   DET_PRE_GRASP_X_OFFSET = 0.0     ; Detection pre-grasp offset in X direction (m) - SEPARATE from movement offset
+   DET_PRE_GRASP_Y_OFFSET = 0.0     ; Detection pre-grasp offset in Y direction (m) - SEPARATE from movement offset  
+   DET_PRE_GRASP_Z_OFFSET = -0.1    ; Detection pre-grasp offset in Z direction (m) - SEPARATE from movement offset
    
    ; Gripping parameters
-   PRE_GRASP_Z_OFFSET = -10   ; in mm (negative for approach)
-   PRE_PLACE_Z_OFFSET = 100   ; in mm (positive for lift)
+   PRE_GRASP_Z_OFFSET = -100   ; in 100 mm above (along item frame z)
+   PRE_PLACE_Z_OFFSET = -100   ; in mm (along world z)
+   
+   ; NOTE: Movement uses PRE_GRASP_Z_OFFSET, detection uses DET_PRE_GRASP_Z_OFFSET
+   ; These are two different parameters that can be configured independently!
    
    ;FOLD INI;%{PE}
       ;FOLD BASISTECH INI
@@ -88,7 +87,7 @@ DEF ItemPickExample()
       FOR IT = 1 TO MAX_DETECTION_RETRIES
          ; Configure detection parameters using helper function
          ; Sets up item type, pose frame, load carrier, ROI, suction surface, and collision detection parameters
-         RC_CONFIGUREPARAMS(serviceNameDetect[], ITEM_TYPE[], POSE_FRAME[], LOAD_CARRIER_ID[], ROI_ID[], SUCTION_LENGTH, SUCTION_WIDTH, GRIPPER_ID[], DETECTION_PRE_GRASP_X_OFFSET, DETECTION_PRE_GRASP_Y_OFFSET, DETECTION_PRE_GRASP_Z_OFFSET)
+         RC_CONFIGUREPARAMS(serviceNameDetect[], ITEM_TYPE[], POSE_FRAME[], LOAD_CARRIER_ID[], ROI_ID[], SUCTION_LENGTH, SUCTION_WIDTH, GRIPPER_ID[], DET_PRE_GRASP_X_OFFSET, DET_PRE_GRASP_Y_OFFSET, DET_PRE_GRASP_Z_OFFSET)
          
          ; Perform detection
          ; Sends detection request to vision system and waits for response
@@ -162,7 +161,7 @@ DEF ExecutePickAndPlace(GRASPPOSE:IN, PLACEPOSE:IN, PRE_GRASP_Z_OFFSET:IN, PRE_P
    ; Calculate pre-place pose
    PREPLACEPOSE.x = PLACEPOSE.x
    PREPLACEPOSE.y = PLACEPOSE.y
-   PREPLACEPOSE.z = PLACEPOSE.z + PRE_PLACE_Z_OFFSET
+   PREPLACEPOSE.z = PLACEPOSE.z - PRE_PLACE_Z_OFFSET
    PREPLACEPOSE.a = PLACEPOSE.a
    PREPLACEPOSE.b = PLACEPOSE.b
    PREPLACEPOSE.c = PLACEPOSE.c
@@ -217,7 +216,7 @@ END
 ; ---- Roboception Functions ----
 ;FOLD ROBOCEPTION_FUNCTIONS
    ;FOLD RC_CONFIGUREPARAMS
-      DEF RC_CONFIGUREPARAMS(serviceNameDetect[]:IN, ITEM_TYPE[]:IN, POSE_FRAME[]:IN, LOAD_CARRIER_ID[]:IN, ROI_ID[]:IN, SUCTION_LENGTH:IN, SUCTION_WIDTH:IN, GRIPPER_ID[]:IN, DETECTION_PRE_GRASP_X_OFFSET:IN, DETECTION_PRE_GRASP_Y_OFFSET:IN, DETECTION_PRE_GRASP_Z_OFFSET:IN)
+      DEF RC_CONFIGUREPARAMS(serviceNameDetect[]:IN, ITEM_TYPE[]:IN, POSE_FRAME[]:IN, LOAD_CARRIER_ID[]:IN, ROI_ID[]:IN, SUCTION_LENGTH:IN, SUCTION_WIDTH:IN, GRIPPER_ID[]:IN, DET_PRE_GRASP_X_OFFSET:IN, DET_PRE_GRASP_Y_OFFSET:IN, DET_PRE_GRASP_Z_OFFSET:IN)
          DECL CHAR serviceNameDetect[]
          DECL CHAR ITEM_TYPE[]
          DECL CHAR POSE_FRAME[]
@@ -225,7 +224,7 @@ END
          DECL CHAR ROI_ID[]
          DECL CHAR GRIPPER_ID[]
          DECL REAL SUCTION_LENGTH, SUCTION_WIDTH
-         DECL REAL DETECTION_PRE_GRASP_X_OFFSET, DETECTION_PRE_GRASP_Y_OFFSET, DETECTION_PRE_GRASP_Z_OFFSET
+         DECL REAL DET_PRE_GRASP_X_OFFSET, DET_PRE_GRASP_Y_OFFSET, DET_PRE_GRASP_Z_OFFSET
          DECL EKI_STATUS RET
          DECL E6POS flangePose
          
@@ -236,7 +235,7 @@ END
          RET = EKI_SETREAL(serviceNameDetect[], "req/args/suction_surface_width", SUCTION_WIDTH)
          RET = EKI_SETSTRING(serviceNameDetect[], "req/args/pose_frame", POSE_FRAME[])
          RET = EKI_SETFRAME(serviceNameDetect[], "req/args/robot_pose", flangePose)
-         
+
          ; Conditional parameters - send only if not empty
          IF ITEM_TYPE[1] <> " " THEN
             RET = EKI_SETSTRING(serviceNameDetect[], "req/args/item_models/le/type", ITEM_TYPE[])
@@ -250,22 +249,20 @@ END
             RET = EKI_SETSTRING(serviceNameDetect[], "req/args/load_carrier_id", LOAD_CARRIER_ID[])
          ENDIF
          
-         ; Collision detection parameters - send only if not empty
          IF GRIPPER_ID[1] <> " " THEN
-            RET = EKI_SETSTRING(serviceNameDetect[], "req/args/gripper_id", GRIPPER_ID[])
+            RET = EKI_SetString(serviceNameDetect[], "req/args/collision_detection/@gripper_id", GRIPPER_ID[])
          ENDIF
          
-         ; Pre-grasp offset parameters (for collision detection)
-         IF DETECTION_PRE_GRASP_X_OFFSET <> 0.0 THEN
-            RET = EKI_SETREAL(serviceNameDetect[], "req/args/pre_grasp_offset/x", DETECTION_PRE_GRASP_X_OFFSET)
+         IF DET_PRE_GRASP_X_OFFSET <> 0.0 THEN
+            RET = EKI_SetReal(serviceNameDetect[], "req/args/collision_detection/pre_grasp_offset/@x", DET_PRE_GRASP_X_OFFSET)
          ENDIF
          
-         IF DETECTION_PRE_GRASP_Y_OFFSET <> 0.0 THEN
-            RET = EKI_SETREAL(serviceNameDetect[], "req/args/pre_grasp_offset/y", DETECTION_PRE_GRASP_Y_OFFSET)
+         IF DET_PRE_GRASP_Y_OFFSET <> 0.0 THEN
+            RET = EKI_SetReal(serviceNameDetect[], "req/args/collision_detection/pre_grasp_offset/@y", DET_PRE_GRASP_Y_OFFSET)
          ENDIF
          
-         IF DETECTION_PRE_GRASP_Z_OFFSET <> 0.0 THEN
-            RET = EKI_SETREAL(serviceNameDetect[], "req/args/pre_grasp_offset/z", DETECTION_PRE_GRASP_Z_OFFSET)
+         IF DET_PRE_GRASP_Z_OFFSET <> 0.0 THEN
+            RET = EKI_SetReal(serviceNameDetect[], "req/args/collision_detection/pre_grasp_offset/@z", DET_PRE_GRASP_Z_OFFSET)
          ENDIF
       END
    ;ENDFOLD (RC_CONFIGUREPARAMS)

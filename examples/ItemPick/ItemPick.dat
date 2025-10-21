@@ -1,0 +1,103 @@
+&ACCESS RVP
+&PARAM EDITMASK = *
+DEFDAT ItemPick
+   ;FOLD EXTERNAL DECLARATIONS;%{PE}%MKUKATPBASIS,%CEXT,%VCOMMON,%P
+   ;FOLD BASISTECH EXT;%{PE}%MKUKATPBASIS,%CEXT,%VEXT,%P
+   EXT BAS (BAS_COMMAND :IN,REAL :IN)
+   ;ENDFOLD (BASISTECH EXT)
+   ;FOLD USER EXT;%{E}%MKUKATPUSER,%CEXT,%VEXT,%P
+   
+   ; EKI Communication
+   DECL CHAR serviceNameDetect[64]
+   
+   ; Common structures and variables
+   DECL INT RCEkiAliveFlagNo=997
+   STRUC RETURNCODE_T INT VALUE,CHAR MSG[512]
+   DECL RETURNCODE_T RETURNCODE
+   
+   ; Frame declarations
+   DECL FRAME GRASP
+   DECL FRAME DETECTEDGRASPS[32]
+   DECL FRAME POSE_IDENT={X 0.0,Y 0.0,Z 0.0,A 0.0,B 0.0,C 0.0}
+   
+   ; IO Signals
+   SIGNAL GripperSuckIO $OUT[1]
+   SIGNAL GripperBlowIO $OUT[2]
+   SIGNAL GripperHasVacuumIO $IN[1]
+   
+   ; Detection results
+   DECL INT NUMDETECTEDGRASPS
+   
+   ; Detection parameters
+   DECL CHAR ITEM_TYPE[32]
+   DECL CHAR POSE_FRAME[32]
+   DECL CHAR LOAD_CARRIER_ID[32]
+   DECL CHAR ROI_ID[32]
+   DECL CHAR GRIPPER_ID[32]
+   DECL REAL SUCTION_LENGTH, SUCTION_WIDTH
+   DECL REAL DET_PRE_GRASP_X_OFFSET, DET_PRE_GRASP_Y_OFFSET, DET_PRE_GRASP_Z_OFFSET
+   DECL INT MAX_DETECTION_RETRIES
+   DECL INT MAX_GRASPS_TO_PROCESS
+   DECL EKI_STATUS RET
+   
+   ; ==============================================================================
+   ; SPEED HIERARCHY - Clean 3-tier system for easy configuration
+   ; ==============================================================================
+   
+   ; PTP (Joint) Speeds - in percentage
+   DECL REAL ptpSpeedHigh=75.0        ; % - Fast transit movements (home, over bin, etc.)
+   DECL REAL ptpSpeedMedium=50.0      ; % - Approach movements (to pre-grasp area)
+   DECL REAL ptpSpeedSlow=25.0        ; % - Careful movements near workpiece
+   
+   ; Linear (Cartesian) Speeds - in m/s  
+   DECL REAL linSpeedHigh=0.400       ; m/s - Fast linear movements (over bin, transit)
+   DECL REAL linSpeedMedium=0.200     ; m/s - Approach movements (to pre-grasp)
+   DECL REAL linSpeedSlow=0.080       ; m/s - Careful in-bin operations
+   
+   ; Legacy speeds - DEPRECATED (kept for compatibility)
+   DECL REAL rlinVelocityStd=0.25    ; m/s 
+   DECL REAL rlinVelocitySlow=0.15   ; m/s
+   DECL REAL rptpVelocityStd=10      ; %
+   
+   ; Movement parameter offsets
+   DECL REAL PRE_GRASP_Z_OFFSET         ; in mm
+   DECL REAL PRE_PLACE_Z_OFFSET
+   
+   ; Positions
+   DECL E6POS XHOME={X 212.898911,Y -2.87642241,Z 569.476624,A -90.000,B 0.0,C -180.000,S 2,T 2,E1 0.0,E2 0.0,E3 0.0,E4 0.0,E5 0.0,E6 0.0}
+   DECL E6POS OVERBINPOSE={X -18.2943077,Y 621.050415,Z 246.103409,A -80.0664063,B 0.0205745194,C -179.997696,S 2,T 11,E1 0.0,E2 0.0,E3 0.0,E4 0.0,E5 0.0,E6 0.0}
+   DECL E6POS PLACEPOSE={X 565.796,Y -85,Z -60,A 0,B 0,C -180,S 2,T 35,E1 0.0,E2 0.0,E3 0.0,E4 0.0,E5 0.0,E6 0.0}
+   
+   ; ==============================================================================
+   ; MOVEMENT DATA STRUCTURES - Consistent speed configurations
+   ; ==============================================================================
+   
+   ; Linear movement data structures - Clean 3-tier system
+   DECL LDAT lDatHigh={VEL 0.400,ACC 20.0000,APO_DIST 10.0000,APO_FAC 50.0000,AXIS_VEL 100.000,AXIS_ACC 100.000,ORI_TYP #VAR,CIRC_TYP #BASE,JERK_FAC 50.0000,GEAR_JERK 100.000,EXAX_IGN 0,CB {AUX_PT {ORI #CONSIDER,E1 #CONSIDER,E2 #CONSIDER,E3 #CONSIDER,E4 #CONSIDER,E5 #CONSIDER,E6 #CONSIDER},TARGET_PT {ORI #INTERPOLATE,E1 #INTERPOLATE,E2 #INTERPOLATE,E3 #INTERPOLATE,E4 #INTERPOLATE,E5 #INTERPOLATE,E6 #INTERPOLATE}}}
+   
+   DECL LDAT lDatMedium={VEL 0.200,ACC 20.0000,APO_DIST 10.0000,APO_FAC 50.0000,AXIS_VEL 100.000,AXIS_ACC 100.000,ORI_TYP #VAR,CIRC_TYP #BASE,JERK_FAC 50.0000,GEAR_JERK 100.000,EXAX_IGN 0,CB {AUX_PT {ORI #CONSIDER,E1 #CONSIDER,E2 #CONSIDER,E3 #CONSIDER,E4 #CONSIDER,E5 #CONSIDER,E6 #CONSIDER},TARGET_PT {ORI #INTERPOLATE,E1 #INTERPOLATE,E2 #INTERPOLATE,E3 #INTERPOLATE,E4 #INTERPOLATE,E5 #INTERPOLATE,E6 #INTERPOLATE}}}
+   
+   DECL LDAT lDatSlow={VEL 0.080,ACC 20.0000,APO_DIST 10.0000,APO_FAC 50.0000,AXIS_VEL 100.000,AXIS_ACC 100.000,ORI_TYP #VAR,CIRC_TYP #BASE,JERK_FAC 50.0000,GEAR_JERK 100.000,EXAX_IGN 0,CB {AUX_PT {ORI #CONSIDER,E1 #CONSIDER,E2 #CONSIDER,E3 #CONSIDER,E4 #CONSIDER,E5 #CONSIDER,E6 #CONSIDER},TARGET_PT {ORI #INTERPOLATE,E1 #INTERPOLATE,E2 #INTERPOLATE,E3 #INTERPOLATE,E4 #INTERPOLATE,E5 #INTERPOLATE,E6 #INTERPOLATE}}}
+   
+   ; PTP movement data structures - Clean 3-tier system
+   DECL PDAT pDatHigh={VEL 75.0000,ACC 20.0000,APO_DIST 50.0000,APO_MODE #CDIS,GEAR_JERK 100.000,EXAX_IGN 0}
+   DECL PDAT pDatMedium={VEL 50.0000,ACC 20.0000,APO_DIST 30.0000,APO_MODE #CDIS,GEAR_JERK 100.000,EXAX_IGN 0}
+   DECL PDAT pDatSlow={VEL 25.0000,ACC 20.0000,APO_DIST 10.0000,APO_MODE #CDIS,GEAR_JERK 100.000,EXAX_IGN 0}
+   
+   ; Frame data (unchanged)
+   DECL FDAT fDatDefault={TOOL_NO 4,BASE_NO 0,IPO_FRAME #BASE,POINT2[] " "}
+   
+   ; Legacy movement data - DEPRECATED (kept for compatibility)
+   DECL LDAT lDatDefault={VEL 2.00000,ACC 20.0000,APO_DIST 10.0000,APO_FAC 50.0000,AXIS_VEL 100.000,AXIS_ACC 100.000,ORI_TYP #VAR,CIRC_TYP #BASE,JERK_FAC 50.0000,GEAR_JERK 100.000,EXAX_IGN 0,CB {AUX_PT {ORI #CONSIDER,E1 #CONSIDER,E2 #CONSIDER,E3 #CONSIDER,E4 #CONSIDER,E5 #CONSIDER,E6 #CONSIDER},TARGET_PT {ORI #INTERPOLATE,E1 #INTERPOLATE,E2 #INTERPOLATE,E3 #INTERPOLATE,E4 #INTERPOLATE,E5 #INTERPOLATE,E6 #INTERPOLATE}}}
+   DECL PDAT pDatDefault={VEL 10.0000,ACC 20.0000,APO_DIST 10.0000,APO_MODE #CDIS,GEAR_JERK 100.000,EXAX_IGN 0}
+   
+   ; ==============================================================================
+   ; COLLISION DETECTION PARAMETERS - declared above with detection parameters
+   ; ==============================================================================
+   ; These are user-configurable parameters that can be set at the top of the program
+   ; Use " " (single space) to skip sending a parameter
+   ; GRIPPER_ID and DET_PRE_GRASP_*_OFFSET are already declared above
+   
+   ;ENDFOLD (USER EXT)
+   ;ENDFOLD (EXTERNAL DECLARATIONS)
+ENDDAT

@@ -1,0 +1,458 @@
+&ACCESS RVP
+&PARAM EDITMASK = *
+DEF CADMatch_2_Step_LC()
+   ;------------------------------------------------------------------------
+   ; Simplified CADMatch with Load Carrier Detection
+   ;
+   ; This program demonstrates a three-step workflow:
+   ; 1. Detect load carrier at first pose (far away to see entire carrier)
+   ; 2. Set the detected load carrier pose in the database with EXACT_POSE
+   ; 3. Perform CADMatch detection using the exact load carrier pose
+   ;
+   ; SETUP:
+   ; 1. Configure service names to match your EKI XML files
+   ; 2. Set LC_ID_TEMPLATE (carrier to detect in step 1)
+   ; 3. Set LC_ID_EXACT (carrier ID to save with exact pose)
+   ; 4. Set TEMPLATE_ID for CADMatch detection
+   ; 5. Teach STARTPOSE in .dat file
+   ;------------------------------------------------------------------------
+   DECL CHAR tempMsg[120]
+   DECL STATE_T State
+   DECL INT Offset
+   DECL KrlMsgPar_T dbgPar[3]
+   
+   ; Service names - must match EKI XML configuration files
+   serviceNameDetectLC[] = "rc_load_carrier-detect_load_carriers"
+   serviceNameSetLC[] = "rc_load_carrier_db-set_load_carrier"
+   serviceNameDetect[] = "rc_cadmatch-detect_object"
+   
+   ; Configuration parameters
+   TEMPLATE_ID[] = "mercedes_A2227580001_schliessbuegel_kiwi_joint"              ; CAD template to match
+   POSE_FRAME[] = "external"                    ; Reference frame
+   LC_ID_TEMPLATE[] = "auer_30x20"   ; LC to detect in step 1
+   LC_ID_EXACT[] = "lc_exact"         ; LC ID to save with exact pose
+   
+   ; Initialize robot
+   ;FOLD INI
+      ;FOLD BASISTECH INI
+         GLOBAL INTERRUPT DECL 3 WHEN $STOPMESS==TRUE DO IR_STOPM()
+         INTERRUPT ON 3
+         BAS(#INITMOV,0)
+      ;ENDFOLD (BASISTECH INI)
+   ;ENDFOLD (INI)
+   
+   ; Initialize EKI interrupt
+   INTERRUPT DECL 89 WHEN $FLAG[998] DO RC_NOTIFYRECEIVED(1, 998)
+   INTERRUPT ON 89
+   
+   ; Initialize all EKI services ONCE at startup
+   RC_SETMSG("Initializing EKI services...")
+   RC_INIT(serviceNameDetectLC[])
+   RC_INIT(serviceNameSetLC[])
+   RC_INIT(serviceNameDetect[])
+   
+   ; Move to start position
+   MoveToStartPosition()
+   
+   RC_SETMSG("Detecting load carrier...")
+   
+   ; STEP 1: Detect load carrier
+   RC_SETMSG("Step 1: Detecting load carrier...")
+   ConfigureLCDetect(serviceNameDetectLC[], LC_ID_TEMPLATE[], POSE_FRAME[])
+   PerformLCDetect(serviceNameDetectLC[])
+   
+   IF (RETURNCODE.VALUE >= 0) AND (NUMDETECTEDLCS > 0) THEN
+      RC_SETMSG("Load carrier detected successfully")
+      
+      ; STEP 2: Set load carrier with exact pose
+      RC_SETMSG("Step 2: Saving load carrier with EXACT_POSE...")
+      ConfigureSetLC(serviceNameSetLC[], LC_ID_EXACT[], DETECTED_LC_POSE, POSE_FRAME[], LC_INNER_X, LC_INNER_Y, LC_INNER_Z, LC_OUTER_X, LC_OUTER_Y, LC_OUTER_Z)
+      PerformSetLC(serviceNameSetLC[])
+      
+      IF RETURNCODE.VALUE >= 0 THEN
+         RC_SETMSG("Load carrier saved with exact pose")
+         
+         ; Move close to bin and perform CADMatch
+         RC_SETMSG("Step 3: Moving closer...")
+         MoveToOverBinPosition()
+         
+         ; STEP 3: Perform CADMatch detection using exact load carrier
+         RC_SETMSG("Step 4: Performing CADMatch detection...")
+         ConfigureCADDetect(serviceNameDetect[], TEMPLATE_ID[], POSE_FRAME[], LC_ID_EXACT[])
+         PerformCADDetect(serviceNameDetect[])
+         
+         IF (RETURNCODE.VALUE >= 0) AND (NUMDETECTEDGRASPS > 0) THEN
+            Offset = 0
+            SWRITE(tempMsg[], State, Offset, "Success! Detected %d grasp(s)", NUMDETECTEDGRASPS)
+            RC_SETMSG(tempMsg[])
+            
+            ; Display first grasp pose
+            DisplayGraspPose(1)
+         ELSE
+            RC_SETMSG("CADMatch detection failed or no objects found")
+            IF RETURNCODE.VALUE < 0 THEN
+               RC_SETMSG(RETURNCODE.MSG[])
+            ENDIF
+         ENDIF
+      ELSE
+         RC_SETMSG("Failed to save load carrier")
+         RC_SETMSG(RETURNCODE.MSG[])
+      ENDIF
+   ELSE
+      RC_SETMSG("Load carrier detection failed")
+      IF RETURNCODE.VALUE < 0 THEN
+         RC_SETMSG(RETURNCODE.MSG[])
+      ENDIF
+   ENDIF
+   
+   RC_SETMSG("Workflow completed")
+END
+
+; ---- Helper Functions ----
+DEF MoveToStartPosition()
+   ;FOLD SPTP STARTPOSE Vel=100 % DEFAULT
+      SPTP STARTPOSE WITH $VEL_AXIS[1]= SVEL_JOINT(100), $TOOL= STOOL2(fDatDefault), $BASE= SBASE(fDatDefault.BASE_NO), $IPO_MODE= SIPO_MODE(fDatDefault.IPO_FRAME), $LOAD= SLOAD(fDatDefault.TOOL_NO), $ACC_AXIS[1]= SACC_JOINT(PDEFAULT), $GEAR_JERK[1]= SGEAR_JERK(PDEFAULT)
+   ;ENDFOLD
+END
+
+DEF MoveToOverBinPosition()
+   ;FOLD SPTP OVERBINPOSE Vel=100 % DEFAULT
+      SPTP OVERBINPOSE WITH $VEL_AXIS[1]= SVEL_JOINT(100), $TOOL= STOOL2(fDatDefault), $BASE= SBASE(fDatDefault.BASE_NO), $IPO_MODE= SIPO_MODE(fDatDefault.IPO_FRAME), $LOAD= SLOAD(fDatDefault.TOOL_NO), $ACC_AXIS[1]= SACC_JOINT(PDEFAULT), $GEAR_JERK[1]= SGEAR_JERK(PDEFAULT)
+   ;ENDFOLD
+END
+
+; ---- Roboception Functions ----
+;FOLD ROBOCEPTION_FUNCTIONS
+   DEF ConfigureLCDetect(serviceNameDetectLC[]:IN, LOAD_CARRIER_ID[]:IN, POSE_FRAME[]:IN)
+      ; Configure load carrier detection parameters
+      DECL CHAR serviceNameDetectLC[]
+      DECL CHAR LOAD_CARRIER_ID[]
+      DECL CHAR POSE_FRAME[]
+      DECL EKI_STATUS RET
+      DECL E6POS flangePose
+      
+      flangePose = $POS_ACT_MES : INV_POS($TOOL)
+      
+      RET = EKI_SetString(serviceNameDetectLC[], "req/args/pose_frame", POSE_FRAME[])
+      RET = EKI_SetString(serviceNameDetectLC[], "req/args/load_carrier_ids/le", LOAD_CARRIER_ID[])
+      RET = EKI_SetFrame(serviceNameDetectLC[], "req/args/robot_pose", flangePose)
+   END
+   
+   DEF PerformLCDetect(serviceNameDetectLC[]:IN)
+      ; Perform load carrier detection
+      DECL CHAR serviceNameDetectLC[]
+      DECL EKI_STATUS RET
+      
+      RC_OPENCONNECTION(serviceNameDetectLC[])
+      
+      WAIT SEC 0
+      RET = EKI_Send(serviceNameDetectLC[], "req")
+      
+      RC_WAITFORRESULT(1)
+      RC_READRESULT_LC(serviceNameDetectLC[])
+      
+      RC_CLOSECONNECTION(serviceNameDetectLC[], "req")
+   END
+   
+   DEF ConfigureSetLC(serviceNameSetLC[]:IN, LC_ID[]:IN, LC_POSE:IN, POSE_FRAME[]:IN, LC_INNER_X_IN:IN, LC_INNER_Y_IN:IN, LC_INNER_Z_IN:IN, LC_OUTER_X_IN:IN, LC_OUTER_Y_IN:IN, LC_OUTER_Z_IN:IN)
+      ; Configure set load carrier parameters
+      DECL CHAR serviceNameSetLC[]
+      DECL CHAR LC_ID[]
+      DECL FRAME LC_POSE
+      DECL CHAR POSE_FRAME[]
+      DECL EKI_STATUS RET
+      DECL REAL LC_INNER_X_IN, LC_INNER_Y_IN, LC_INNER_Z_IN
+      DECL REAL LC_OUTER_X_IN, LC_OUTER_Y_IN, LC_OUTER_Z_IN
+      
+      RET = EKI_SetString(serviceNameSetLC[], "req/args/load_carrier/@id", LC_ID[])
+      RET = EKI_SetString(serviceNameSetLC[], "req/args/load_carrier/@pose_type", "EXACT_POSE")
+      RET = EKI_SetString(serviceNameSetLC[], "req/args/load_carrier/@pose_frame", POSE_FRAME[])
+      
+      ; Set pose
+      RET = EKI_SetFrame(serviceNameSetLC[], "req/args/load_carrier/pose", LC_POSE)
+      RET = EKI_SetReal(serviceNameSetLC[], "req/args/load_carrier/inner_dimensions/@x", LC_INNER_X_IN)
+      RET = EKI_SetReal(serviceNameSetLC[], "req/args/load_carrier/inner_dimensions/@y", LC_INNER_Y_IN)
+      RET = EKI_SetReal(serviceNameSetLC[], "req/args/load_carrier/inner_dimensions/@z", LC_INNER_Z_IN)
+      
+      RET = EKI_SetReal(serviceNameSetLC[], "req/args/load_carrier/outer_dimensions/@x", LC_OUTER_X_IN)
+      RET = EKI_SetReal(serviceNameSetLC[], "req/args/load_carrier/outer_dimensions/@y", LC_OUTER_Y_IN)
+      RET = EKI_SetReal(serviceNameSetLC[], "req/args/load_carrier/outer_dimensions/@z", LC_OUTER_Z_IN)
+   END
+   
+   DEF PerformSetLC(serviceNameSetLC[]:IN)
+      ; Perform set load carrier
+      DECL CHAR serviceNameSetLC[]
+      DECL EKI_STATUS RET
+      
+      RC_OPENCONNECTION(serviceNameSetLC[])
+      
+      WAIT SEC 0
+      RET = EKI_Send(serviceNameSetLC[], "req")
+      
+      RC_WAITFORRESULT(1)
+      RC_READRESULT_SIMPLE(serviceNameSetLC[])
+      
+      RC_CLOSECONNECTION(serviceNameSetLC[], "req")
+   END
+   
+   DEF ConfigureCADDetect(serviceNameDetect[]:IN, TEMPLATE_ID[]:IN, POSE_FRAME[]:IN, LOAD_CARRIER_ID[]:IN)
+      ; Configure CADMatch detection parameters
+      DECL CHAR serviceNameDetect[]
+      DECL CHAR TEMPLATE_ID[]
+      DECL CHAR POSE_FRAME[]
+      DECL CHAR LOAD_CARRIER_ID[]
+      DECL EKI_STATUS RET
+      DECL E6POS flangePose
+      
+      flangePose = $POS_ACT_MES : INV_POS($TOOL)
+      
+      RET = EKI_SetString(serviceNameDetect[], "req/args/template_id", TEMPLATE_ID[])
+      RET = EKI_SetString(serviceNameDetect[], "req/args/pose_frame", POSE_FRAME[])
+      RET = EKI_SetFrame(serviceNameDetect[], "req/args/robot_pose", flangePose)
+      RET = EKI_SetString(serviceNameDetect[], "req/args/load_carrier_id", LOAD_CARRIER_ID[])
+   END
+   
+   DEF PerformCADDetect(serviceNameDetect[]:IN)
+      ; Perform CADMatch detection
+      DECL CHAR serviceNameDetect[]
+      DECL EKI_STATUS RET
+      
+      RC_OPENCONNECTION(serviceNameDetect[])
+      
+      WAIT SEC 0
+      RET = EKI_Send(serviceNameDetect[], "req")
+      
+      RC_WAITFORRESULT(1)
+      RC_READRESULT_CADMATCH(serviceNameDetect[])
+      
+      RC_CLOSECONNECTION(serviceNameDetect[], "req")
+   END
+   
+   DEF DisplayGraspPose(Index:IN)
+      DECL INT Index
+      DECL KrlMsgPar_T par[3]
+      
+      par[1] = {par_type #value, par_real 0}
+      par[1].par_real = DETECTEDGRASPS[Index].X
+      par[2] = {par_type #value, par_real 0}
+      par[2].par_real = DETECTEDGRASPS[Index].Y
+      par[3] = {par_type #value, par_real 0}
+      par[3].par_real = DETECTEDGRASPS[Index].Z
+      RC_SETMSG_PARAM("Grasp pose: X: %1, Y: %2, Z: %3", par[])
+   END
+   
+   DEF RC_READRESULT_LC(configFileName[]:IN)
+      ; Read results from load carrier detection
+      DECL CHAR configFileName[]
+      DECL RETURNCODE_T RESULT
+      DECL EKI_STATUS RET
+      DECL FRAME POSE
+      DECL REAL detectedInnerX, detectedInnerY, detectedInnerZ
+      DECL REAL detectedOuterX, detectedOuterY, detectedOuterZ
+      DECL KrlMsgPar_T parPose[3]
+      DECL KrlMsgPar_T parDims[3]
+      
+      POSE = POSE_IDENT
+      detectedInnerX = 0.0
+      detectedInnerY = 0.0
+      detectedInnerZ = 0.0
+      detectedOuterX = 0.0
+      detectedOuterY = 0.0
+      detectedOuterZ = 0.0
+      RESULT={VALUE 0, MSG[] "0"}
+      
+      ; Receive return code
+      RET = EKI_GetInt(configFileName[], "res/return_code/@value", RESULT.VALUE)
+      RET = EKI_GetString(configFileName[], "res/return_code/@message", RESULT.MSG[])
+      RETURNCODE = RESULT
+      
+      IF (RESULT.VALUE < 0) THEN
+         RC_SETMSG("Load Carrier Detection Error")
+         RC_SETMSG(RESULT.MSG[])
+      ENDIF
+      
+      ; Receive number of detected load carriers (check LAST field like ItemPick)
+      RET = EKI_CheckBuffer(configFileName[], "res/load_carriers/le/type")
+      NUMDETECTEDLCS = RET.Buff
+      
+      IF NUMDETECTEDLCS > 0 THEN
+         ; Inner/outer
+         RET = EKI_GetReal(configFileName[], "res/load_carriers/le/inner_dimensions/@x", detectedInnerX)
+         RET = EKI_GetReal(configFileName[], "res/load_carriers/le/inner_dimensions/@y", detectedInnerY)
+         RET = EKI_GetReal(configFileName[], "res/load_carriers/le/inner_dimensions/@z", detectedInnerZ)
+         RET = EKI_GetReal(configFileName[], "res/load_carriers/le/outer_dimensions/@x", detectedOuterX)
+         RET = EKI_GetReal(configFileName[], "res/load_carriers/le/outer_dimensions/@y", detectedOuterY)
+         RET = EKI_GetReal(configFileName[], "res/load_carriers/le/outer_dimensions/@z", detectedOuterZ)
+         
+         ; Pose LAST
+         RET = EKI_GetFrame(configFileName[], "res/load_carriers/le/pose", POSE)
+         DETECTED_LC_POSE = POSE
+         
+         ; Assign globals (meters)
+         LC_INNER_X = detectedInnerX
+         LC_INNER_Y = detectedInnerY
+         LC_INNER_Z = detectedInnerZ
+         LC_OUTER_X = detectedOuterX
+         LC_OUTER_Y = detectedOuterY
+         LC_OUTER_Z = detectedOuterZ
+         
+         ; Compact messages
+         parPose[1] = {par_type #value, par_real 0}
+         parPose[2] = {par_type #value, par_real 0}
+         parPose[3] = {par_type #value, par_real 0}
+         parPose[1].par_real = DETECTED_LC_POSE.X
+         parPose[2].par_real = DETECTED_LC_POSE.Y
+         parPose[3].par_real = DETECTED_LC_POSE.Z
+         RC_SETMSG_PARAM("LC found. Pose X:%1 Y:%2 Z:%3", parPose[])
+         
+         parDims[1] = {par_type #value, par_real 0}
+         parDims[2] = {par_type #value, par_real 0}
+         parDims[3] = {par_type #value, par_real 0}
+         parDims[1].par_real = LC_INNER_X
+         parDims[2].par_real = LC_INNER_Y
+         parDims[3].par_real = LC_INNER_Z
+         RC_SETMSG_PARAM("Inner (m) X:%1 Y:%2 Z:%3", parDims[])
+         parDims[1].par_real = LC_OUTER_X
+         parDims[2].par_real = LC_OUTER_Y
+         parDims[3].par_real = LC_OUTER_Z
+         RC_SETMSG_PARAM("Outer (m) X:%1 Y:%2 Z:%3", parDims[])
+      ENDIF
+      
+      RET = EKI_ClearBuffer(configFileName[], "res")
+   END
+   
+   DEF RC_READRESULT_SIMPLE(configFileName[]:IN)
+      ; Simple result reader for services that only return status
+      DECL CHAR configFileName[]
+      DECL RETURNCODE_T RESULT
+      DECL EKI_STATUS RET
+      
+      RESULT={VALUE 0, MSG[] "0"}
+      
+      RET = EKI_GetInt(configFileName[], "res/return_code/@value", RESULT.VALUE)
+      RET = EKI_GetString(configFileName[], "res/return_code/@message", RESULT.MSG[])
+      RETURNCODE = RESULT
+      
+      IF (RESULT.VALUE < 0) THEN
+         RC_SETMSG("API Error")
+         RC_SETMSG(RESULT.MSG[])
+      ENDIF
+      
+      RET = EKI_ClearBuffer(configFileName[], "res")
+   END
+   
+   DEF RC_READRESULT_CADMATCH(configFileName[]:IN)
+      ; Read results from CADMatch detection
+      DECL CHAR configFileName[]
+      DECL RETURNCODE_T RESULT
+      DECL EKI_STATUS RET
+      DECL INT j
+      DECL FRAME POSE
+      
+      POSE = POSE_IDENT
+      RESULT={VALUE 0, MSG[] "0"}
+      
+      ; Receive return code
+      RET = EKI_GetInt(configFileName[], "res/return_code/@value", RESULT.VALUE)
+      RET = EKI_GetString(configFileName[], "res/return_code/@message", RESULT.MSG[])
+      RETURNCODE = RESULT
+      
+      IF (RESULT.VALUE < 0) THEN
+         RC_SETMSG("CADMatch Detection Error")
+         RC_SETMSG(RESULT.MSG[])
+      ENDIF
+      
+      ; Receive number of detections
+      RET = EKI_CheckBuffer(configFileName[], "res/grasps/le/id")
+      NUMDETECTEDGRASPS = RET.Buff
+      
+      ; Receive grasp frames
+      FOR j=1 to NUMDETECTEDGRASPS
+         RET = EKI_GetFrame(configFileName[], "res/grasps/le/pose", POSE)
+         DETECTEDGRASPS[j] = POSE
+      ENDFOR
+      
+      RET = EKI_ClearBuffer(configFileName[], "res")
+   END
+   
+   ; --- Common helper functions ---
+   DEF RC_SETMSG(msg[]:IN)
+      DECL CHAR msg[]
+      DECL KrlMsgPar_T params[3]
+      
+      RC_SETMSG_PARAM(msg[], params[])
+   END
+   
+   DEF RC_SETMSG_PARAM(msg[]:IN, params:OUT)
+      DECL CHAR msg[]
+      DECL KrlMsgPar_T params[]
+      
+      DECL KrlMsg_T name
+      DECL KrlMsgOpt_T options
+      DECL INT Handle, len, count
+      DECL EKrlMsgType Type
+      
+      name={modul[] "rc", nr 1, msg_txt[] " "}
+      Type=#notify
+      
+      len=STRLEN(msg[])
+      IF len>0 THEN
+         IF len>80 THEN
+            len=80
+         ENDIF
+         FOR count=1 TO len
+            name.msg_txt[count]=msg[count]
+         ENDFOR
+      ELSE
+         name.msg_txt[]="parameter msg[] is missing"
+      ENDIF
+      
+      Handle=Set_KrlMsg(Type, name, params[], options)
+   END
+   
+   DEF RC_INIT(configFileName[]:IN)
+      DECL CHAR configFileName[]
+      DECL EKI_Status RET
+      
+      RET=EKI_INIT(configFileName[])
+   END
+   
+   DEF RC_OPENCONNECTION(configFileName[]:IN)
+      DECL CHAR configFileName[]
+      DECL EKI_Status RET
+      
+      RET=EKI_Open(configFileName[])
+      EKI_CHECK(RET,#Quit)
+   END
+   
+   DEF RC_CLOSECONNECTION(configFileName[]:IN, strPlace[]:IN)
+      DECL CHAR configFileName[]
+      DECL CHAR strPlace[]
+      DECL EKI_Status RET
+      
+      WAIT SEC 0
+      RET=EKI_Close(configFileName[])
+      RET=EKI_ClearBuffer(configFileName[], strPlace[])
+   END
+   
+   DEF RC_WAITFORRESULT(WaitFlag:IN)
+      DECL INT WaitFlag
+      
+      WAIT FOR $FLAG[WaitFlag] OR NOT $FLAG[RCEkiAliveFlagNo]
+      
+      IF(NOT $FLAG[RCEkiAliveFlagNo]) THEN
+         RC_SETMSG("EKI connection lost")
+      ENDIF
+      
+      $FLAG[WaitFlag] = FALSE
+      WAIT SEC 0
+   END
+   
+   DEF RC_NOTIFYRECEIVED(WAITFLAG:IN, EOFRESULFLAG:IN)
+      DECL INT WAITFLAG
+      DECL INT EOFRESULFLAG
+      
+      $FLAG[EOFRESULFLAG]=FALSE
+      $FLAG[WAITFLAG]=TRUE
+   END
+;ENDFOLD (ROBOCEPTION_FUNCTIONS)
