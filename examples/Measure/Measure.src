@@ -1,20 +1,37 @@
-&ACCESS RVO
-&REL 1
-&PARAM DISKPATH = KRC:\R1\Program
-
-DEF MeasureExample()
-   ; MeasureExample
-   ; -------------
-   ; Demonstrates depth measurement capabilities using Roboception's Measure module.
-   ; The program:
-   ; 1. Configures measurement parameters (cell count, pose frame, etc.)
-   ; 2. Performs depth measurements
-   ; 3. Retrieves and processes measurement results including:
-   ;    - Cell-wise coverage and depth statistics
-   ;    - Overall coverage and depth statistics
-   ;    - Region of interest information
-   ; 4. Continuously loops for repeated measurements
+&ACCESS RVP
+&PARAM EDITMASK = *
+DEF Measure()
+   ;------------------------------------------------------------------------
+   ; Measure Example Program for Roboception rc_visard/rc_cube
    ;
+   ; This program demonstrates depth measurement capabilities using Roboception's 
+   ; Measure module. The program:
+   ; 1. Configures measurement parameters (cell count, pose frame, etc.)
+   ; 2. Performs depth measurements with continuous monitoring
+   ; 3. Retrieves and processes measurement results including:
+   ;    - Cell-wise coverage and depth statistics (min, max, mean Z values)
+   ;    - Overall coverage and depth statistics across all cells
+   ;    - Region of interest information and dimensions
+   ; 4. Continuously loops for repeated measurements until interrupted
+   ;
+   ; IMPORTANT SETUP INSTRUCTIONS:
+   ; 1. The service names MUST match exactly with your EKI XML configuration files
+   ; 2. Modify only the parameters in this section before running the program
+   ; 3. Ensure the robot is positioned to view the measurement area
+   ; 4. Configure cell count parameters based on your measurement requirements
+   ;
+   ; HOW THE PROGRAM WORKS:
+   ; - The program calls the Measure detection service which performs depth analysis
+   ; - Measurement results are returned as cell-based statistics including:
+   ;   a) Individual cell coverage and Z-depth statistics (min, max, mean)
+   ;   b) Overall measurement statistics across all cells
+   ;   c) Region of interest dimensions and positioning
+   ; - The program continuously loops, performing measurements until interrupted
+   ; - All measurement data is displayed via RC_SETMSG for monitoring
+   ;
+   ; The measurement process provides detailed depth information for quality control,
+   ; object detection, and spatial analysis applications.
+   ;------------------------------------------------------------------------
    
    DECL CHAR serviceNameDetect[64]
    DECL EKI_Status RET

@@ -1,8 +1,6 @@
-&ACCESS RVO
-&REL 1
-&PARAM DISKPATH = KRC:\R1\Program
-
-DEF CadMatchExample()
+&ACCESS RVP
+&PARAM EDITMASK = *
+DEF CADMatch()
    ;------------------------------------------------------------------------
    ; CADMatch Example Program for Roboception rc_visard/rc_cube
    ;

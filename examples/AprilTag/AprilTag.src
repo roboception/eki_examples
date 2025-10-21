@@ -1,8 +1,6 @@
-&ACCESS RVO
-&REL 1
-&PARAM DISKPATH = KRC:\R1\Program
-
-DEF AprilTagExample()
+&ACCESS RVP
+&PARAM EDITMASK = *
+DEF AprilTag()
    ; AprilTagExample
    ; --------------
    ; Demonstrates AprilTag detection and robot positioning using Roboception's AprilTag module. The program:

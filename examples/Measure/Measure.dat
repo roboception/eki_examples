@@ -1,8 +1,6 @@
-&ACCESS RVO
-&REL 1
-&PARAM DISKPATH = KRC:\R1\Program
-
-DEFDAT MeasureExample
+&ACCESS RVP
+&PARAM EDITMASK = *
+DEFDAT Measure
    
    ;FOLD EXTERNAL DECLARATIONS;%{PE}%MKUKATPBASIS,%CEXT,%VCOMMON,%P
    ;FOLD BASISTECH EXT;%{PE}%MKUKATPBASIS,%CEXT,%VEXT,%P
@@ -24,27 +22,27 @@ DEFDAT MeasureExample
    DECL INT cell_count_x=1
    DECL INT cell_count_y=1
    
-   DECL REAL cells_le_coverage=0.635559916
-   DECL REAL cells_le_max_z_x=0.261022836
-   DECL REAL cells_le_max_z_y=0.155322656
-   DECL REAL cells_le_max_z_z=-0.985252321
-   DECL REAL cells_le_mean_z_x=0.324700236
-   DECL REAL cells_le_mean_z_y=-0.221007794
-   DECL REAL cells_le_mean_z_z=0.178322837
-   DECL REAL cells_le_min_z_x=0.178115726
-   DECL REAL cells_le_min_z_y=-0.272681028
-   DECL REAL cells_le_min_z_z=0.245054752
+   DECL REAL cells_le_coverage=0.0  
+   DECL REAL cells_le_max_z_x=0.0
+   DECL REAL cells_le_max_z_y=0.0
+   DECL REAL cells_le_max_z_z=0.0
+   DECL REAL cells_le_mean_z_x=0.0
+   DECL REAL cells_le_mean_z_y=0.0
+   DECL REAL cells_le_mean_z_z=0.0
+   DECL REAL cells_le_min_z_x=0.0
+   DECL REAL cells_le_min_z_y=0.0
+   DECL REAL cells_le_min_z_z=0.0
    
-   DECL REAL cells_overall_coverage=0.635559916
-   DECL REAL cells_overall_max_z_x=0.261022836
-   DECL REAL cells_overall_max_z_y=0.155322656
-   DECL REAL cells_overall_max_z_z=-0.985252321
-   DECL REAL cells_overall_mean_z_x=0.324700236
-   DECL REAL cells_overall_mean_z_y=-0.221007794
-   DECL REAL cells_overall_mean_z_z=0.178322837
-   DECL REAL cells_overall_min_z_x=0.178115726
-   DECL REAL cells_overall_min_z_y=-0.272681028
-   DECL REAL cells_overall_min_z_z=0.245054752
+   DECL REAL cells_overall_coverage=0.0
+   DECL REAL cells_overall_max_z_x=0.0
+   DECL REAL cells_overall_max_z_y=0.0
+   DECL REAL cells_overall_max_z_z=0.0
+   DECL REAL cells_overall_mean_z_x=0.0
+   DECL REAL cells_overall_mean_z_y=0.0
+   DECL REAL cells_overall_mean_z_z=0.0
+   DECL REAL cells_overall_min_z_x=0.0
+   DECL REAL cells_overall_min_z_y=0.0
+   DECL REAL cells_overall_min_z_z=0.0
    ;ENDFOLD (MEASUREMENT DATA)
    
    ;FOLD ROI

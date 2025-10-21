@@ -1,0 +1,523 @@
+&ACCESS RVP
+&PARAM EDITMASK = *
+DEF BoxPick()
+   ; BoxPickExample
+   ; --------------
+   ; Demonstrates bin-picking using roboception's BoxPick module with continuous detection
+   ; and pick-and-place operations for rectangular items using suction gripper.
+   ;
+   ; The program:
+   ; 1. Continuously detects rectangular items in a bin using vision system
+   ; 2. For each detected item, attempts multiple grasp poses if needed
+   ; 3. Places successfully picked items at a predefined location
+   ; 4. Loops until no more items are detected or program is interrupted
+   ;
+   ; ITEM MODEL TYPES:
+   ; - RECTANGLE: Generic rectangular items with min/max dimensions
+   ; - TEXTURED_BOX: Template-based detection for specific textured boxes
+   ;
+   ; IMPORTANT - UNITS:
+   ; - ALL API parameters are in METERS (suction size, dimensions, offsets, robot pose)
+   ; - Robot movements use MILLIMETERS (PRE_GRASP_Z_OFFSET, positions)
+   ; - Returned grasp poses are automatically in mm (EKI_GetFrame converts)
+   ;
+   ; ENHANCEMENTS:
+   ; - Clean 3-tier speed hierarchy (High/Medium/Slow) for easy configuration
+   ; - Collision detection support with gripper ID and pre-grasp offsets
+   ; - Proper separation of movement offsets vs. detection offsets
+   ; - Consistent use of .dat file variables for better maintainability
+   ; - Support for both RECTANGLE and TEXTURED_BOX item models
+   ; - Suction gripper parameters (required for BoxPick)
+   ;
+   
+   ; Parameters for detection - declared in .dat file
+   DECL INT CURRENTITEM, IT
+   
+   ; Service name - same as the EKI service name
+   ; TODO: Change this to the correct service name - could be "sensor_a_pipeline_1_rc_boxpick-compute_grasps"
+   serviceNameDetect[] = "rc_boxpick-compute_grasps"
+   
+   ; Maximum number of grasps to process per detection
+   MAX_GRASPS_TO_PROCESS = 1
+   ; Maximum number of detection retries
+   MAX_DETECTION_RETRIES = 5
+   
+   ; Detection parameters for rectangle item model
+   ITEM_MODEL_TYPE[] = "RECTANGLE"  ; "RECTANGLE" or "TEXTURED_BOX" (uppercase!)
+   
+   ; Suction gripper parameters (in meters) - REQUIRED for BoxPick!
+   SUCTION_LENGTH = 0.02  ; Suction surface length (m)
+   SUCTION_WIDTH = 0.02   ; Suction surface width (m)
+   
+   ; Rectangle dimensions (in meters)
+   RECTANGLE_MIN_X = 0.08  ; Minimum dimension in X (m)
+   RECTANGLE_MIN_Y = 0.05  ; Minimum dimension in Y (m)
+   RECTANGLE_MAX_X = 0.15  ; Maximum dimension in X (m)
+   RECTANGLE_MAX_Y = 0.12  ; Maximum dimension in Y (m)
+   
+   ; Textured box parameters (only used if ITEM_MODEL_TYPE = "textured_box")
+   TEXTURED_BOX_TEMPLATE_ID[] = ""  ; Template ID for textured box
+   TEXTURED_BOX_DIM_X = 0.0  ; Box dimension X (m)
+   TEXTURED_BOX_DIM_Y = 0.0  ; Box dimension Y (m)
+   TEXTURED_BOX_DIM_Z = 0.0  ; Box dimension Z (m)
+   TEXTURED_BOX_TOLERANCE = 0.0  ; Dimensions tolerance (m)
+   TEXTURED_BOX_MAX_DEFORM = 0.0  ; Max deformation (m)
+   
+   LOAD_CARRIER_ID[] = "auer_60_40_22" ; Load carrier to detect items in
+   ROI_ID[] = " "  ; Region of interest (use " " for none)
+   POSE_FRAME[] = "external"
+   
+   ; Collision detection parameters - use " " to skip sending
+   GRIPPER_ID[] = "parallel_gripper"    ; Gripper identifier for collision detection
+   DET_PRE_GRASP_X_OFFSET = 0.0  ; Detection pre-grasp offset in X direction (m) - SEPARATE from movement offset
+   DET_PRE_GRASP_Y_OFFSET = 0.0  ; Detection pre-grasp offset in Y direction (m) - SEPARATE from movement offset  
+   DET_PRE_GRASP_Z_OFFSET = -0.01  ; Detection pre-grasp offset in Z direction (m) - SEPARATE from movement offset
+   ; NOTE: Movement uses PRE_GRASP_Z_OFFSET, detection uses DET_PRE_GRASP_Z_OFFSET
+   ; These are two different parameters that can be configured independently!
+   
+   ; Gripping parameters
+   PRE_GRASP_Z_OFFSET = -10   ; in mm (negative for approach)
+   PRE_PLACE_Z_OFFSET = 100   ; in mm (positive for lift)
+   
+   ;FOLD INI;%{PE}
+      ;FOLD BASISTECH INI
+         GLOBAL INTERRUPT DECL 3 WHEN $STOPMESS==TRUE DO IR_STOPM ( )
+         INTERRUPT ON 3 
+         BAS (#INITMOV,0 )
+      ;ENDFOLD (BASISTECH INI)
+   ;ENDFOLD (INI)
+   
+   INTERRUPT DECL 89 WHEN $flag[998] DO RC_NOTIFYRECEIVED(1, 998)
+   INTERRUPT ON 89
+   
+   ;FOLD SPTP home vel=75 % HIGH Speed Transit ;%{pe}
+      SPTP XHOME WITH $VEL_AXIS[1] = SVEL_JOINT(ptpSpeedHigh)
+   ;ENDFOLD
+   
+   GRIPPEROPEN()
+   
+   RC_INIT(serviceNameDetect[])
+   
+   ;
+   ; Main program loop
+   ; Continuously tries to detect and pick items until no more items are found
+   ; or the program is interrupted
+   ;
+   LOOP
+      RC_SETMSG("Detect next item.")
+      
+      ;
+      ; Detection retry loop
+      ; Attempts to detect items up to MAX_DETECTION_RETRIES times
+      ; Exits either on successful detection or when max retries are reached
+      ;
+      FOR IT = 1 TO MAX_DETECTION_RETRIES
+         ; Configure detection parameters using helper function
+         ; Sets up item model, pose frame, load carrier, ROI, suction surface, and collision detection parameters
+         RC_CONFIGUREPARAMS(serviceNameDetect[], ITEM_MODEL_TYPE[], POSE_FRAME[], LOAD_CARRIER_ID[], ROI_ID[], SUCTION_LENGTH, SUCTION_WIDTH, RECTANGLE_MIN_X, RECTANGLE_MIN_Y, RECTANGLE_MAX_X, RECTANGLE_MAX_Y, TEXTURED_BOX_TEMPLATE_ID[], TEXTURED_BOX_DIM_X, TEXTURED_BOX_DIM_Y, TEXTURED_BOX_DIM_Z, TEXTURED_BOX_TOLERANCE, TEXTURED_BOX_MAX_DEFORM, GRIPPER_ID[], DET_PRE_GRASP_X_OFFSET, DET_PRE_GRASP_Y_OFFSET, DET_PRE_GRASP_Z_OFFSET)
+         
+         ; Perform detection
+         ; Sends detection request to vision system and waits for response
+         PerformDetection(serviceNameDetect[])
+         
+         ; Exit retry loop if detection was successful
+         IF DetectionSuccessful() THEN
+            EXIT
+         ENDIF
+         
+         ; Exit program if we've exhausted all retries
+         IF IT == MAX_DETECTION_RETRIES THEN
+            RC_SETMSG("No more items detected - ending program")
+            EXIT
+         ENDIF
+      ENDFOR
+      
+      ;
+      ; Process detected grasps
+      ; If detection was successful, attempt to pick and place each detected grasp
+      ; If detection failed, exit the program
+      ;
+      IF DetectionSuccessful() THEN
+         ; Process grasps from this detection, up to MAX_GRASPS_TO_PROCESS
+         FOR CURRENTITEM = 1 TO NUMDETECTEDGRASPS
+            GRASP = DETECTEDGRASPS[CURRENTITEM]
+            LogGraspInfo(CURRENTITEM, GRASP)
+            ExecutePickAndPlace(GRASP, PLACEPOSE, PRE_GRASP_Z_OFFSET, PRE_PLACE_Z_OFFSET)
+            
+            ; Break if we've processed maximum number of grasps
+            IF CURRENTITEM >= MAX_GRASPS_TO_PROCESS THEN
+               EXIT
+            ENDIF
+         ENDFOR
+      ELSE
+         ; No items detected after all retries - exit program
+         EXIT
+      ENDIF
+   ENDLOOP
+   
+   ; Clean up and return home
+   
+   ;FOLD SPTP home vel=75 % HIGH Speed Transit ;%{pe}
+      SPTP XHOME WITH $VEL_AXIS[1] = SVEL_JOINT(ptpSpeedHigh)
+   ;ENDFOLD
+END
+
+DEF ExecutePickAndPlace(GRASPPOSE:IN, PLACEPOSE:IN, PRE_GRASP_Z_OFFSET:IN, PRE_PLACE_Z_OFFSET:IN)
+   ;
+   ; Executes a complete pick and place operation
+   ;
+   ; @param GRASPPOSE: Target pose for grasping the object
+   ; @param PLACEPOSE: Target pose for placing the object
+   ; @param PRE_GRASP_Z_OFFSET: Vertical offset (mm) for pre-grasp approach position
+   ; @param PRE_PLACE_Z_OFFSET: Vertical offset (mm) for pre-place approach position
+   ; @return TRUE if operation successful, FALSE if gripper check fails
+   ;
+   DECL FRAME GRASPPOSE
+   DECL E6POS PLACEPOSE
+   DECL REAL PRE_GRASP_Z_OFFSET, PRE_PLACE_Z_OFFSET
+   DECL E6POS GRASPPOSE_E6POS
+   DECL E6POS PREGRASPPOSE
+   DECL E6POS PREPLACEPOSE
+   
+   ; Convert FRAME to E6POS
+   GRASPPOSE_E6POS = {X 0, Y 0, Z 0, A 0, B 0, C 0, S 0, T 0, E1 0, E2 0, E3 0, E4 0, E5 0, E6 0}
+   GRASPPOSE_E6POS.X = GRASPPOSE.X
+   GRASPPOSE_E6POS.Y = GRASPPOSE.Y
+   GRASPPOSE_E6POS.Z = GRASPPOSE.Z
+   GRASPPOSE_E6POS.A = GRASPPOSE.A
+   GRASPPOSE_E6POS.B = GRASPPOSE.B
+   GRASPPOSE_E6POS.C = GRASPPOSE.C
+   
+   ; Calculate pre-grasp and pre-place poses
+   PREGRASPPOSE = GRASPPOSE_E6POS
+   PREGRASPPOSE.Z = GRASPPOSE_E6POS.Z + PRE_GRASP_Z_OFFSET
+   PREPLACEPOSE = PLACEPOSE
+   PREPLACEPOSE.Z = PLACEPOSE.Z + PRE_PLACE_Z_OFFSET
+   
+   ; Approach to pre-grasp position
+   ;FOLD SLIN PREGRASPPOSE vel=0.200 m/s MEDIUM Speed Approach ;%{pe}
+      SLIN PREGRASPPOSE WITH $VEL = SVEL_CP(linSpeedMedium), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO), $IPO_MODE = SIPO_MODE(fDatDefault.IPO_FRAME), $LOAD = SLOAD(fDatDefault.TOOL_NO), $ACC = SACC_CP(lDatMedium), $ORI_TYPE = SORI_TYP(lDatMedium), $JERK = SJERK(lDatMedium)
+   ;ENDFOLD
+   
+   ; Move to grasp position
+   ;FOLD SLIN GRASPPOSE_E6POS vel=0.080 m/s SLOW Speed In-Bin ;%{pe}
+      SLIN GRASPPOSE_E6POS WITH $VEL = SVEL_CP(linSpeedSlow), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO), $IPO_MODE = SIPO_MODE(fDatDefault.IPO_FRAME), $LOAD = SLOAD(fDatDefault.TOOL_NO), $ACC = SACC_CP(lDatSlow), $ORI_TYPE = SORI_TYP(lDatSlow), $JERK = SJERK(lDatSlow)
+   ;ENDFOLD
+   
+   ; Grip the object
+   GRIPPERCLOSE()
+   WAIT SEC 0.5
+   
+   ; Lift to pre-grasp position
+   ;FOLD SLIN PREGRASPPOSE vel=0.080 m/s SLOW Speed In-Bin ;%{pe}
+      SLIN PREGRASPPOSE WITH $VEL = SVEL_CP(linSpeedSlow), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO), $IPO_MODE = SIPO_MODE(fDatDefault.IPO_FRAME), $LOAD = SLOAD(fDatDefault.TOOL_NO), $ACC = SACC_CP(lDatSlow), $ORI_TYPE = SORI_TYP(lDatSlow), $JERK = SJERK(lDatSlow)
+   ;ENDFOLD
+   
+   ; Move to over-bin position
+   ;FOLD SPTP OVERBINPOSE vel=75 % HIGH Speed Transit ;%{pe}
+      SPTP OVERBINPOSE WITH $VEL_AXIS[1] = SVEL_JOINT(ptpSpeedHigh)
+   ;ENDFOLD
+   
+   ; Move to pre-place position
+   ;FOLD SLIN PREPLACEPOSE vel=0.400 m/s HIGH Speed Transit ;%{pe}
+      SLIN PREPLACEPOSE WITH $VEL = SVEL_CP(linSpeedHigh), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO), $IPO_MODE = SIPO_MODE(fDatDefault.IPO_FRAME), $LOAD = SLOAD(fDatDefault.TOOL_NO), $ACC = SACC_CP(lDatHigh), $ORI_TYPE = SORI_TYP(lDatHigh), $JERK = SJERK(lDatHigh)
+   ;ENDFOLD
+   
+   ; Move to place position
+   ;FOLD SLIN PLACEPOSE vel=0.080 m/s SLOW Speed Placement ;%{pe}
+      SLIN PLACEPOSE WITH $VEL = SVEL_CP(linSpeedSlow), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO), $IPO_MODE = SIPO_MODE(fDatDefault.IPO_FRAME), $LOAD = SLOAD(fDatDefault.TOOL_NO), $ACC = SACC_CP(lDatSlow), $ORI_TYPE = SORI_TYP(lDatSlow), $JERK = SJERK(lDatSlow)
+   ;ENDFOLD
+   
+   ; Release the object
+   GRIPPEROPEN()
+   WAIT SEC 0.5
+   
+   ; Return to pre-place position
+   ;FOLD SLIN PREPLACEPOSE vel=0.200 m/s MEDIUM Speed Retract ;%{pe}
+      SLIN PREPLACEPOSE WITH $VEL = SVEL_CP(linSpeedMedium), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO), $IPO_MODE = SIPO_MODE(fDatDefault.IPO_FRAME), $LOAD = SLOAD(fDatDefault.TOOL_NO), $ACC = SACC_CP(lDatMedium), $ORI_TYPE = SORI_TYP(lDatMedium), $JERK = SJERK(lDatMedium)
+   ;ENDFOLD
+   
+   ; Return to over-bin position
+   ;FOLD SPTP OVERBINPOSE vel=75 % HIGH Speed Transit ;%{pe}
+      SPTP OVERBINPOSE WITH $VEL_AXIS[1] = SVEL_JOINT(ptpSpeedHigh)
+   ;ENDFOLD
+END
+
+DEF PerformDetection(serviceNameDetect[]:IN)
+   ;
+   ; Opens connection, sends detection request, waits for result, reads it, and closes connection
+   ;
+   ; @param serviceNameDetect[]: EKI configuration/service name
+   ;
+   DECL CHAR serviceNameDetect[]
+   DECL EKI_STATUS RET
+   
+   RC_OPENCONNECTION(serviceNameDetect[])
+   WAIT SEC 0
+   RET = EKI_Send(serviceNameDetect[], "req")
+   RC_WAITFORRESULT(1)
+   RC_READRESULT(serviceNameDetect[])
+   RC_CLOSECONNECTION(serviceNameDetect[], "req")
+END
+
+DEFFCT BOOL DetectionSuccessful()
+   IF (RETURNCODE.VALUE < 0) THEN
+      RETURN FALSE
+   ENDIF
+   
+   IF NUMDETECTEDGRASPS > 0 THEN
+      RETURN TRUE
+   ENDIF
+   
+   RETURN FALSE
+ENDFCT
+
+DEF LogGraspInfo(graspNum:IN, graspPose:IN)
+   ;
+   ; Logs information about a detected grasp
+   ;
+   ; @param graspNum: Index of the grasp
+   ; @param graspPose: Pose of the grasp
+   ;
+   DECL INT graspNum
+   DECL FRAME graspPose
+   DECL KrlMsgPar_T par[3]
+   
+   par[1] = {par_type #value, par_INT 0}
+   par[1].par_INT = graspNum
+   par[2] = {par_type #value, par_REAL 0}
+   par[2].par_REAL = graspPose.X
+   par[3] = {par_type #value, par_REAL 0}
+   par[3].par_REAL = graspPose.Y
+   RC_SETMSG_PARAM("Processing grasp %1: X=%2, Y=%3", par[])
+END
+
+DEF GRIPPEROPEN()
+   ; Open gripper (placeholder - implement based on your gripper)
+   RC_SETMSG("Gripper: Opening")
+   ; Example: $OUT[1] = FALSE
+   ; WAIT SEC 0.3
+END
+
+DEF GRIPPERCLOSE()
+   ; Close gripper (placeholder - implement based on your gripper)
+   RC_SETMSG("Gripper: Closing")
+   ; Example: $OUT[1] = TRUE
+   ; WAIT SEC 0.3
+END
+
+; ---- Roboception Functions ----
+;FOLD RC Functions
+   ;FOLD RC_CONFIGUREPARAMS
+      DEF RC_CONFIGUREPARAMS(serviceNameDetect[]:IN, ITEM_MODEL_TYPE[]:IN, POSE_FRAME[]:IN, LOAD_CARRIER_ID[]:IN, ROI_ID[]:IN, SUCTION_LENGTH:IN, SUCTION_WIDTH:IN, RECTANGLE_MIN_X:IN, RECTANGLE_MIN_Y:IN, RECTANGLE_MAX_X:IN, RECTANGLE_MAX_Y:IN, TEXTURED_BOX_TEMPLATE_ID[]:IN, TEXTURED_BOX_DIM_X:IN, TEXTURED_BOX_DIM_Y:IN, TEXTURED_BOX_DIM_Z:IN, TEXTURED_BOX_TOLERANCE:IN, TEXTURED_BOX_MAX_DEFORM:IN, GRIPPER_ID[]:IN, DET_PRE_GRASP_X_OFFSET:IN, DET_PRE_GRASP_Y_OFFSET:IN, DET_PRE_GRASP_Z_OFFSET:IN)
+         ;
+         ; Configures all detection parameters for BoxPick
+         ; NOTE: ALL parameters sent to API are in METERS
+         ;
+         DECL CHAR serviceNameDetect[]
+         DECL CHAR ITEM_MODEL_TYPE[]
+         DECL CHAR POSE_FRAME[]
+         DECL CHAR LOAD_CARRIER_ID[]
+         DECL CHAR ROI_ID[]
+         DECL REAL SUCTION_LENGTH, SUCTION_WIDTH  ; in meters
+         DECL REAL RECTANGLE_MIN_X, RECTANGLE_MIN_Y, RECTANGLE_MAX_X, RECTANGLE_MAX_Y  ; in meters
+         DECL CHAR TEXTURED_BOX_TEMPLATE_ID[]
+         DECL REAL TEXTURED_BOX_DIM_X, TEXTURED_BOX_DIM_Y, TEXTURED_BOX_DIM_Z  ; in meters
+         DECL REAL TEXTURED_BOX_TOLERANCE, TEXTURED_BOX_MAX_DEFORM  ; in meters
+         DECL CHAR GRIPPER_ID[]
+         DECL REAL DET_PRE_GRASP_X_OFFSET, DET_PRE_GRASP_Y_OFFSET, DET_PRE_GRASP_Z_OFFSET  ; in meters
+         DECL EKI_STATUS RET
+         DECL E6POS flangePose
+         
+         ; Get current robot flange pose
+         flangePose = $POS_ACT_MES : INV_POS($TOOL)
+         
+         ; Set basic parameters
+         RET = EKI_SETSTRING(serviceNameDetect[], "req/args/pose_frame", POSE_FRAME[])
+         RET = EKI_SETFRAME(serviceNameDetect[], "req/args/robot_pose", flangePose)
+         
+         ; Set suction surface (REQUIRED for BoxPick!) - in meters
+         RET = EKI_SETREAL(serviceNameDetect[], "req/args/suction_surface_length", SUCTION_LENGTH)
+         RET = EKI_SETREAL(serviceNameDetect[], "req/args/suction_surface_width", SUCTION_WIDTH)
+         
+         ; Set item model type (must be uppercase!)
+         RET = EKI_SETSTRING(serviceNameDetect[], "req/args/item_models/le/type", ITEM_MODEL_TYPE[])
+         
+         ; Configure based on item model type (must match uppercase type!)
+         IF ITEM_MODEL_TYPE[] == "RECTANGLE" THEN
+            RET = EKI_SETREAL(serviceNameDetect[], "req/args/item_models/le/rectangle/min_dimensions/@x", RECTANGLE_MIN_X)
+            RET = EKI_SETREAL(serviceNameDetect[], "req/args/item_models/le/rectangle/min_dimensions/@y", RECTANGLE_MIN_Y)
+            RET = EKI_SETREAL(serviceNameDetect[], "req/args/item_models/le/rectangle/max_dimensions/@x", RECTANGLE_MAX_X)
+            RET = EKI_SETREAL(serviceNameDetect[], "req/args/item_models/le/rectangle/max_dimensions/@y", RECTANGLE_MAX_Y)
+         ENDIF
+         
+         IF ITEM_MODEL_TYPE[] == "TEXTURED_BOX" THEN
+            RET = EKI_SETSTRING(serviceNameDetect[], "req/args/item_models/le/textured_box/@template_id", TEXTURED_BOX_TEMPLATE_ID[])
+            RET = EKI_SETREAL(serviceNameDetect[], "req/args/item_models/le/textured_box/dimensions/@x", TEXTURED_BOX_DIM_X)
+            RET = EKI_SETREAL(serviceNameDetect[], "req/args/item_models/le/textured_box/dimensions/@y", TEXTURED_BOX_DIM_Y)
+            RET = EKI_SETREAL(serviceNameDetect[], "req/args/item_models/le/textured_box/dimensions/@z", TEXTURED_BOX_DIM_Z)
+            RET = EKI_SETREAL(serviceNameDetect[], "req/args/item_models/le/textured_box/@dimensions_tolerance_m", TEXTURED_BOX_TOLERANCE)
+            RET = EKI_SETREAL(serviceNameDetect[], "req/args/item_models/le/textured_box/@max_deformation_m", TEXTURED_BOX_MAX_DEFORM)
+         ENDIF
+         
+         ; Optional parameters - only send if not empty/zero
+         IF ROI_ID[1] <> " " THEN
+            RET = EKI_SETSTRING(serviceNameDetect[], "req/args/region_of_interest_id", ROI_ID[])
+         ENDIF
+         
+         IF LOAD_CARRIER_ID[1] <> " " THEN
+            RET = EKI_SETSTRING(serviceNameDetect[], "req/args/load_carrier_id", LOAD_CARRIER_ID[])
+         ENDIF
+         
+         ; Collision detection parameters - send only if not empty
+         IF GRIPPER_ID[1] <> " " THEN
+            RET = EKI_SETSTRING(serviceNameDetect[], "req/args/collision_detection/@gripper_id", GRIPPER_ID[])
+         ENDIF
+         
+         ; Pre-grasp offset parameters (for collision detection)
+         IF DET_PRE_GRASP_X_OFFSET <> 0.0 THEN
+            RET = EKI_SETREAL(serviceNameDetect[], "req/args/collision_detection/pre_grasp_offset/@x", DET_PRE_GRASP_X_OFFSET)
+         ENDIF
+         
+         IF DET_PRE_GRASP_Y_OFFSET <> 0.0 THEN
+            RET = EKI_SETREAL(serviceNameDetect[], "req/args/collision_detection/pre_grasp_offset/@y", DET_PRE_GRASP_Y_OFFSET)
+         ENDIF
+         
+         IF DET_PRE_GRASP_Z_OFFSET <> 0.0 THEN
+            RET = EKI_SETREAL(serviceNameDetect[], "req/args/collision_detection/pre_grasp_offset/@z", DET_PRE_GRASP_Z_OFFSET)
+         ENDIF
+      END
+   ;ENDFOLD (RC_CONFIGUREPARAMS)
+   
+   ;FOLD RC_SETMSG
+      DEF RC_SETMSG(msg[]:IN)
+         DECL CHAR msg[]
+         DECL KrlMsgPar_T PARAMS[3]
+         RC_SETMSG_PARAM(msg[], PARAMS[])
+      END
+   ;ENDFOLD (RC_SETMSG)
+   
+   ;FOLD RC_SETMSG_PARAM
+      DEF RC_SETMSG_PARAM(msg[]:IN, PARAMS:OUT)
+         DECL CHAR msg[]
+         DECL KrlMsgPar_T PARAMS[]
+         
+         DECL KrlMsg_T name
+         DECL KrlMsgOpt_T options
+         DECL INT handle, len, count
+         DECL EKrlMsgType type
+         
+         name={modul[] "rc", nr 1, msg_txt[] " "}
+         
+         type=#notify
+         
+         len=STRLEN(msg[])
+         IF len>0 THEN
+            IF len>80 THEN
+               len=80
+            ENDIF
+            FOR count=1 TO len
+               name.msg_txt[count]=msg[count]
+            ENDFOR
+         ELSE
+            name.msg_txt[]="parameter msg[] is missing"
+         ENDIF
+         
+         handle=Set_KrlMsg(type, name, PARAMS[], options)
+      END
+   ;ENDFOLD (RC_SETMSG_PARAM)
+   
+   ;FOLD RC_INIT
+      DEF RC_INIT(configfilename[]:IN)
+         DECL CHAR configfilename[]
+         DECL EKI_STATUS RET
+         RET = EKI_INIT(configfilename[])
+      END
+   ;ENDFOLD (RC_INIT)
+   
+   ;FOLD RC_OPENCONNECTION
+      DEF RC_OPENCONNECTION(configfilename[]:IN)
+         DECL CHAR configfilename[]
+         DECL EKI_STATUS RET
+         RET = EKI_Open(configfilename[])
+         EKI_CHECK(RET,#Quit)
+      END
+   ;ENDFOLD (RC_OPENCONNECTION)
+   
+   ;FOLD RC_CLOSECONNECTION
+      DEF RC_CLOSECONNECTION(configfilename[]:IN, strplace[]:IN)
+         DECL CHAR configfilename[]
+         DECL CHAR strplace[]
+         DECL EKI_STATUS RET
+         WAIT SEC 0
+         RET = EKI_Close(configfilename[])
+         RET = EKI_ClearBuffer(configfilename[], strplace[])
+      END
+   ;ENDFOLD (RC_CLOSECONNECTION)
+   
+   ;FOLD RC_WAITFORRESULT
+      DEF RC_WAITFORRESULT(waitflag:IN)
+         DECL INT waitflag
+         WAIT FOR $FLAG[waitflag] OR NOT $FLAG[RCEkiAliveFlagNo]
+         IF(NOT $FLAG[RCEkiAliveFlagNo]) THEN
+            RC_SETMSG("EKI connection lost")
+         ENDIF
+         $FLAG[waitflag] = FALSE
+         WAIT SEC 0
+      END
+   ;ENDFOLD (RC_WAITFORRESULT)
+   
+   ;FOLD RC_NOTIFYRECEIVED
+      DEF RC_NOTIFYRECEIVED(waitflag:IN, eofresulflag:IN)
+         DECL INT waitflag
+         DECL INT eofresulflag
+         $FLAG[eofresulflag]=FALSE
+         $FLAG[waitflag]=TRUE
+      END
+   ;ENDFOLD (RC_NOTIFYRECEIVED)
+   
+   ;FOLD RC_READRESULT
+      DEF RC_READRESULT(configFileName[]:IN)
+         DECL CHAR configFileName[]
+         DECL RETURNCODE_T RESULT
+         DECL EKI_STATUS RET
+         DECL INT j
+         DECL FRAME POSE
+         DECL KrlMsgPar_T par[3]
+         
+         POSE = POSE_IDENT
+         
+         RESULT={VALUE 0, MSG[] "0"}
+         
+         RET = EKI_GetInt(configFileName[], "res/return_code/@value", RESULT.VALUE)
+         RET = EKI_GetString(configFileName[], "res/return_code/@message", RESULT.MSG[])
+         RETURNCODE = RESULT
+         
+         ; Display error message immediately if there is one
+         IF (RESULT.VALUE < 0) THEN
+            RC_SETMSG("API Error")
+            RC_SETMSG(RESULT.MSG[])
+         ENDIF
+         
+         RET = EKI_CheckBuffer(configFileName[], "res/grasps/le/uuid")
+         NUMDETECTEDGRASPS = RET.Buff
+         
+         ; Log the number of detected grasps
+         par[1] = {par_type #value, par_INT 0}
+         par[1].par_INT = NUMDETECTEDGRASPS
+         RC_SETMSG_PARAM("Number of detected grasps: %1", par[])
+         
+         ; Only try to get frames if grasps were detected
+         IF NUMDETECTEDGRASPS > 0 THEN
+            FOR j=1 TO NUMDETECTEDGRASPS
+               RET = EKI_GetFrame(configFileName[], "res/grasps/le/pose", POSE)
+               DETECTEDGRASPS[j] = POSE
+            ENDFOR
+         ELSE
+            RC_SETMSG("No grasps detected - skipping pose extraction")
+         ENDIF
+         
+         RET = EKI_ClearBuffer(configFileName[], "res")
+      END
+   ;ENDFOLD (RC_READRESULT)
+;ENDFOLD
