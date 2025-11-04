@@ -97,6 +97,12 @@ END
       RET = EKI_SetInt(serviceNameDetect[], "req/args/cell_count/@x", 1)
       RET = EKI_SetInt(serviceNameDetect[], "req/args/cell_count/@y", 1)
       
+      ; Configure region of interest
+      RET = EKI_SetInt(serviceNameDetect[], "req/args/region_of_interest_2d/@height", roi_height)
+      RET = EKI_SetInt(serviceNameDetect[], "req/args/region_of_interest_2d/@offset_x", roi_offset_x)
+      RET = EKI_SetInt(serviceNameDetect[], "req/args/region_of_interest_2d/@offset_y", roi_offset_Y)
+      RET = EKI_SetInt(serviceNameDetect[], "req/args/region_of_interest_2d/@width", roi_width)
+      
       flangePose = $POS_ACT_MES : INV_POS($TOOL)
       RET = EKI_SetFrame(serviceNameDetect[], "req/args/robot_pose", flangePose)
    END
@@ -258,55 +264,25 @@ END
          RET = EKI_GetReal(configFileName[], "res/overall/min_z/@y", cells_overall_min_z_y)
          RET = EKI_GetReal(configFileName[], "res/overall/min_z/@z", cells_overall_min_z_z)
          
-         RET = EKI_GetString(configFileName[], "res/pose_frame", pose_frame[])
-         
-         RET = EKI_GetInt(configFileName[], "res/region_of_interest_2d/@height", roi_height)
-         RET = EKI_GetInt(configFileName[], "res/region_of_interest_2d/@offset_x", roi_offset_x)
-         RET = EKI_GetInt(configFileName[], "res/region_of_interest_2d/@offset_y", roi_offset_Y)
-         RET = EKI_GetInt(configFileName[], "res/region_of_interest_2d/@width", roi_width)     
-         
          RET = EKI_ClearBuffer(configFileName[], "res")
+         
+         ; Print overall mean Z measurement results on robot
+
+         par[1] = {par_type #value, par_REAL 0}
+         par[1].par_REAL = cells_overall_mean_z_x
+         par[2] = {par_type #value, par_REAL 0}
+         par[2].par_REAL = cells_overall_mean_z_y
+         par[3] = {par_type #value, par_REAL 0}
+         par[3].par_REAL = cells_overall_mean_z_z
+         RC_SETMSG_PARAM("Overall Mean Z: X=%1 Y=%2 Z=%3", par[])
       END
       
    ;ENDFOLD (RC_READRESULT)
    
    ;FOLD (ResetData)
       DEF ResetData()
-         DECL BOOL bret
-         
          cell_count_x = 0
          cell_count_y = 0
-         
-         cells_le_coverage = 0.0
-         cells_le_max_z_x = 0.0
-         cells_le_max_z_y = 0.0
-         cells_le_max_z_z = 0.0
-         cells_le_mean_z_x = 0.0
-         cells_le_mean_z_y = 0.0
-         cells_le_mean_z_z = 0.0
-         cells_le_min_z_x = 0.0
-         cells_le_min_z_y = 0.0
-         cells_le_min_z_z = 0.0
-         
-         cells_overall_coverage = 0.0
-         cells_overall_max_z_x = 0.0
-         cells_overall_max_z_y = 0.0
-         cells_overall_max_z_z = 0.0
-         cells_overall_mean_z_x = 0.0
-         cells_overall_mean_z_y = 0.0
-         cells_overall_mean_z_z = 0.0
-         cells_overall_min_z_x = 0.0
-         cells_overall_min_z_y = 0.0
-         cells_overall_min_z_z = 0.0
-         
-         bret = StrClear(pose_frame[])
-         pose_frame[] = " "
-         
-         roi_height = 0
-         roi_offset_x = 0
-         roi_offset_Y = 0
-         roi_width = 0
-         
       END
    ;ENDFOLD (ResetData)
 ;ENDFOLD (ROBOCEPTION_FUNCTIONS)
