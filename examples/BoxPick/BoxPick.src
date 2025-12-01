@@ -40,35 +40,35 @@ DEF BoxPick()
    ; Maximum number of grasps to process per detection
    MAX_GRASPS_TO_PROCESS = 1
    ; Maximum number of detection retries
-   MAX_DETECTION_RETRIES = 5
+   MAX_DETECTION_RETRIES = 3
    
    ; Detection parameters for rectangle item model
-   ITEM_MODEL_TYPE[] = "RECTANGLE"  ; "RECTANGLE" or "TEXTURED_BOX" (uppercase!)
+   ITEM_MODEL_TYPE[] = "RECTANGLE"  ; "RECTANGLE" or "TEXTURED_BOX"
    
    ; Suction gripper parameters (in meters) - REQUIRED for BoxPick!
    SUCTION_LENGTH = 0.02  ; Suction surface length (m)
    SUCTION_WIDTH = 0.02   ; Suction surface width (m)
    
    ; Rectangle dimensions (in meters)
-   RECTANGLE_MIN_X = 0.08  ; Minimum dimension in X (m)
+   RECTANGLE_MIN_X = 0.05  ; Minimum dimension in X (m)
    RECTANGLE_MIN_Y = 0.05  ; Minimum dimension in Y (m)
-   RECTANGLE_MAX_X = 0.15  ; Maximum dimension in X (m)
-   RECTANGLE_MAX_Y = 0.12  ; Maximum dimension in Y (m)
+   RECTANGLE_MAX_X = 0.20  ; Maximum dimension in X (m)
+   RECTANGLE_MAX_Y = 0.20  ; Maximum dimension in Y (m)
    
    ; Textured box parameters (only used if ITEM_MODEL_TYPE = "textured_box")
-   TEXTURED_BOX_TEMPLATE_ID[] = ""  ; Template ID for textured box
+   TEXTURED_BOX_TEMPLATE_ID[] = " "  ; Template ID for textured box - use " " for none
    TEXTURED_BOX_DIM_X = 0.0  ; Box dimension X (m)
    TEXTURED_BOX_DIM_Y = 0.0  ; Box dimension Y (m)
    TEXTURED_BOX_DIM_Z = 0.0  ; Box dimension Z (m)
    TEXTURED_BOX_TOLERANCE = 0.0  ; Dimensions tolerance (m)
    TEXTURED_BOX_MAX_DEFORM = 0.0  ; Max deformation (m)
    
-   LOAD_CARRIER_ID[] = "auer_60_40_22" ; Load carrier to detect items in
-   ROI_ID[] = " "  ; Region of interest (use " " for none)
+   LOAD_CARRIER_ID[] = " " ; Load carrier to detect items in - use " " for none
+   ROI_ID[] = " "  ; Region of interest  - use " " for none
    POSE_FRAME[] = "external"
    
    ; Collision detection parameters - use " " to skip sending
-   GRIPPER_ID[] = "parallel_gripper"    ; Gripper identifier for collision detection
+   GRIPPER_ID[] = "parallel_gripper"    ; Gripper identifier for collision detection - use " " for none
    DET_PRE_GRASP_X_OFFSET = 0.0  ; Detection pre-grasp offset in X direction (m) - SEPARATE from movement offset
    DET_PRE_GRASP_Y_OFFSET = 0.0  ; Detection pre-grasp offset in Y direction (m) - SEPARATE from movement offset  
    DET_PRE_GRASP_Z_OFFSET = -0.01  ; Detection pre-grasp offset in Z direction (m) - SEPARATE from movement offset
@@ -343,15 +343,15 @@ END
          ; Set item model type (must be uppercase!)
          RET = EKI_SETSTRING(serviceNameDetect[], "req/args/item_models/le/type", ITEM_MODEL_TYPE[])
          
-         ; Configure based on item model type (must match uppercase type!)
-         IF ITEM_MODEL_TYPE[] == "RECTANGLE" THEN
+         ; Configure based on item model type
+         IF STRCOMP(ITEM_MODEL_TYPE[], "RECTANGLE", #NOT_CASE_SENS) THEN
             RET = EKI_SETREAL(serviceNameDetect[], "req/args/item_models/le/rectangle/min_dimensions/@x", RECTANGLE_MIN_X)
             RET = EKI_SETREAL(serviceNameDetect[], "req/args/item_models/le/rectangle/min_dimensions/@y", RECTANGLE_MIN_Y)
             RET = EKI_SETREAL(serviceNameDetect[], "req/args/item_models/le/rectangle/max_dimensions/@x", RECTANGLE_MAX_X)
             RET = EKI_SETREAL(serviceNameDetect[], "req/args/item_models/le/rectangle/max_dimensions/@y", RECTANGLE_MAX_Y)
          ENDIF
          
-         IF ITEM_MODEL_TYPE[] == "TEXTURED_BOX" THEN
+         IF STRCOMP(ITEM_MODEL_TYPE[], "TEXTURED_BOX", #NOT_CASE_SENS) THEN
             RET = EKI_SETSTRING(serviceNameDetect[], "req/args/item_models/le/textured_box/@template_id", TEXTURED_BOX_TEMPLATE_ID[])
             RET = EKI_SETREAL(serviceNameDetect[], "req/args/item_models/le/textured_box/dimensions/@x", TEXTURED_BOX_DIM_X)
             RET = EKI_SETREAL(serviceNameDetect[], "req/args/item_models/le/textured_box/dimensions/@y", TEXTURED_BOX_DIM_Y)

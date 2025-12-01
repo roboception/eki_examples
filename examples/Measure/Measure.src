@@ -77,8 +77,6 @@ DEF Measure()
          HALT
       ENDIF
       
-      RC_SETMSG("Finish")
-      
    ENDLOOP
    
    ; No explicit close here; PerformDetection handles connection lifecycle
@@ -223,6 +221,7 @@ END
          DECL CHAR configFileName[]
          DECL RETURNCODE_T RESULT
          DECL EKI_STATUS RET
+         DECL KrlMsgPar_T par[3]
          
          RESULT={VALUE 0, MSG[] "0"}
          
