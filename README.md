@@ -1,7 +1,7 @@
 # EKI-Examples
 
-This repository provides example applications demonstrating how to integrate [Roboception](https://roboception.com)'s [rc_visard](https://roboception.com/rc_visard) 
-or [rc_cube](https://roboception.com/product/rc_cube-s/) with KUKA robots using the EKI interface.
+This repository provides example applications demonstrating how to integrate [rc_visard](https://roboception.com/rc_visard) 
+or [rc_cube](https://roboception.com/product/rc_cube-s/) devices with KUKA robots using the EKI interface.
 
 ## Example Applications
 
@@ -33,7 +33,7 @@ For detailed configuration instructions, refer to the [Ethernet connection confi
 
 * All robot poses in these examples must be adjusted for your specific setup before use
 * These applications should only be executed by experienced robot programmers who have thoroughly reviewed and understood the code
-* Roboception is not liable for any damages that may occur from using these example applications
+* The authors are not liable for any damages that may occur from using these example applications
 
 ## Getting Started
 
@@ -51,8 +51,7 @@ For detailed configuration instructions, refer to the [Ethernet connection confi
 * [rc_visard Manual](https://doc.rc-visard.com)
 * [rc_cube Manual](https://doc.rc-cube.com)
 
-For more information about Roboception and our product portfolio, please visit [roboception.com](https://www.roboception.com)
 
 ## Support
 
-If you have any questions, our technical support team is here to help. Contact information can be found at [roboception.com/support](https://roboception.com/en/support/).
+If you have any questions, technical support contact information can be found at [roboception.com/support](https://roboception.com/en/support/).
