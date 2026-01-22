@@ -43,7 +43,7 @@ Die folgenden Parameter am Anfang von `CadMatchExample.src` müssen vor dem Ausf
     *   `serviceNameStart[]`: EKI-Dienstname zum Starten des CADMatch-Moduls (z.B. `"rc_cadmatch-start"`).
     *   `serviceNameStop[]`: EKI-Dienstname zum Stoppen des CADMatch-Moduls (z.B. `"rc_cadmatch-stop"`).
 *   **Erkennungsparameter:**
-    *   `TEMPLATE_ID[]`: Name der CAD-Vorlage, die abgeglichen werden soll (z.B. `"Template_Name"`). Diese muss mit der Vorlagen-ID auf dem rc_visard/rc_cube übereinstimmen.
+    *   `TEMPLATE_ID[]`: Name der CAD-Vorlage, die abgeglichen werden soll (z.B. `"template_name"`). Diese muss mit der Vorlagen-ID auf dem rc_visard/rc_cube übereinstimmen.
     *   `POSE_FRAME[]`: Referenzsystem für die gemeldeten Posen (z.B. `"external"` für Posen im Basiskoordinatensystem des Roboters, unter Annahme einer korrekten Hand-Auge-Kalibrierung).
     *   `LOAD_CARRIER_ID[]`: ID eines vorkonfigurierten Ladungsträgers auf dem Roboception-Gerät. Verwenden Sie `" "` (Leerzeichen), wenn kein Ladungsträger verwendet wird.
     *   `ROI_ID[]`: ID einer vorkonfigurierten Region of Interest (ROI) auf dem Roboception-Gerät. Verwenden Sie `" "`, wenn keine spezifische ROI verwendet wird.

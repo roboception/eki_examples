@@ -1,7 +1,9 @@
 # EKI-Examples
 
 This repository provides example applications demonstrating how to integrate [rc_visard](https://roboception.com/rc_visard) 
-or [rc_cube](https://roboception.com/product/rc_cube-s/) devices with KUKA robots using the EKI interface.
+or [rc_cube](https://roboception.com/product/rc_cube-s/) devices with KUKA robots using the EKI (Ethernet KRL) interface.
+
+These examples are based on KUKA's EthernetKRL technology package. Official documentation: [KUKA EthernetKRL 2.2 Manual](http://supportwop.com/IntegrationRobot/content/6-Syst%C3%A8mes_int%C3%A9grations/Ethernet_KRL/KST_EthernetKRL_22_en.pdf)
 
 ## Example Applications
 
@@ -44,13 +46,49 @@ For detailed configuration instructions, refer to the [Ethernet connection confi
 5. Adjust robot poses and parameters for your setup
 6. Test thoroughly in a safe environment
 
+## Error Handling and Troubleshooting
+
+### EKI00023 "Initialization already performed"
+
+If you stop a program mid-execution and restart it, you may encounter error **EKI00023 "Initialization already performed"**. This happens because `EKI_Init()` allocates resources that persist across program stops (but not resets). See [KUKA EthernetKRL documentation](http://supportwop.com/IntegrationRobot/content/6-Syst%C3%A8mes_int%C3%A9grations/Ethernet_KRL/KST_EthernetKRL_22_en.pdf) pages 29-30 for details.
+
+**Solution: Use global flags to track initialization state**
+
+This approach requires an additional PUBLIC .dat file per program, which is not included in these examples for simplicity, but can be easily added for production deployments.
+
+1. Create a separate PUBLIC .dat file for global flags:
+```krl
+DEFDAT ProgramName_GlobalFlags PUBLIC
+   DECL PUBLIC BOOL EKI_DETECT_INITIALIZED
+ENDDAT
+```
+
+2. In your main program, check the flag before initializing:
+```krl
+DEF ProgramName()
+   DECL GLOBAL BOOL EKI_DETECT_INITIALIZED
+   
+
+   
+   IF NOT EKI_DETECT_INITIALIZED THEN
+      RET = EKI_INIT(serviceNameDetect[])
+      IF RET.Msg_No == 0 THEN
+         EKI_DETECT_INITIALIZED = TRUE
+      ENDIF
+   ENDIF
+END
+```
+
+**Why separate .dat files?** KUKA requires all variables in a `DEFDAT ... PUBLIC` block to be declared `PUBLIC`. Keep global flags in their own file to avoid making all program variables global.
+
+**When is this needed?** Production environments where operators may stop/restart programs frequently. Not required if programs always run to completion or manual reset is acceptable.
+
 ## Documentation
 
 * [rc_visard EKI Documentation](https://doc.rc-visard.com/latest/en/eki.html)
 * [rc_cube EKI Documentation](https://doc.rc-cube.com/latest/en/eki.html)
 * [rc_visard Manual](https://doc.rc-visard.com)
 * [rc_cube Manual](https://doc.rc-cube.com)
-
 
 ## Support
 

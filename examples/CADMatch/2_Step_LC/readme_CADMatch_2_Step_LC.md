@@ -169,7 +169,7 @@ Result: Grasp poses for detected objects
 ```json
 {
   "args": {
-    "template_id": "Template_Name",
+    "template_id": "template_name",
     "pose_frame": "external",
     "load_carrier_id": "lc_exact"
   }

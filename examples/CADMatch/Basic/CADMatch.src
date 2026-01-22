@@ -49,7 +49,7 @@ DEF CADMatch()
    serviceNameStop[] = "rc_cadmatch-stop"
    
    ; Detection configuration parameters
-   TEMPLATE_ID[] = "Template_Name"         ; CAD template to match
+   TEMPLATE_ID[] = "template_name"         ; CAD template to match
    POSE_FRAME[] = "external"               ; Reference frame for poses
    LOAD_CARRIER_ID[] = " "                 ; Load carrier ID (Whitespace " " = none)
    ROI_ID[] = " "                          ; Region of interest ID
@@ -87,16 +87,17 @@ DEF CADMatch()
    ; Move robot to home position and open gripper
    GripperOpen(defaultOpening)
    MoveToStartPosition()
+
+   ; Initialize and open all EKI services once at program start
+   RC_EKI_INIT_OPEN(serviceNameStart[])
+   RC_EKI_INIT_OPEN(serviceNameStop[])
+   RC_EKI_INIT_OPEN(serviceNameDetect[])
    
-   ; Initialize CADMatch module and open connection to rc_cube
    RC_START(serviceNameStart[])
-   $FLAG[1] = FALSE
-   RC_SETMSG("Start")
-   
-   RC_INIT(serviceNameDetect[])
    
    ; Main detection and pick-and-place loop
    LOOP
+
       ; Reset vision results
       ResetDetectedGrasps()
       RECEIVED_GRIPPER_ID[] = "none" ; Reset received ID for this cycle
@@ -172,9 +173,12 @@ DEF CADMatch()
          EXIT  ; Exit main loop if detection fails after all retries
       ENDIF
    ENDLOOP
-   
-   ; Clean up and stop the service
+
+   ; Clean up and stop the services once at program end
    RC_STOP(serviceNameStop[])
+   RC_EKI_CLOSE_CLEAR(serviceNameDetect[])
+   RC_EKI_CLOSE_CLEAR(serviceNameStart[])
+   RC_EKI_CLOSE_CLEAR(serviceNameStop[])
 END
 
 DEF ExecutePickAndPlace(GRASPPOSE:IN, PLACEPOSE:IN, MOT_PRE_GRASP_Z_OFFSET:IN, MOT_PRE_PLACE_Z_OFFSET:IN, targetOpening:IN)
@@ -329,12 +333,6 @@ END
          RET = EKI_SetReal(serviceNameDetect[], "req/args/collision_detection/pre_grasp_offset/@z", PRE_GRASP_OFFSET_Z)
       ENDIF
       
-      ; Open connection before sending request
-      RC_OPENCONNECTION(serviceNameDetect[])
-      
-      ; Force synchronization
-      WAIT SEC 0
-      
       ; Send request
       RET = EKI_Send(serviceNameDetect[], "req")
       
@@ -344,8 +342,7 @@ END
       ; Read results
       RC_READRESULT(serviceNameDetect[])
       
-      ; Close the connection after reading results
-      RC_CLOSECONNECTION(serviceNameDetect[], "req")
+      RET = EKI_ClearBuffer(serviceNameDetect[], "req")
    END
    
    DEFFCT BOOL DetectionSuccessful()
@@ -427,29 +424,37 @@ END
       Handle=Set_KrlMsg(Type, name, params[], options)
    END
    
-   DEF RC_INIT(configFileName[]:IN)
+   DEF RC_EKI_INIT_OPEN(configFileName[]:IN)
       DECL CHAR configFileName[]
       DECL EKI_Status RET
+      DECL CHAR msg[120]
+      DECL STATE_T State
+      DECL INT Offset
       
-      RET=EKI_INIT(configFileName[])
-   END
-   
-   DEF RC_OPENCONNECTION(configFileName[]:IN)
-      DECL CHAR configFileName[]
-      DECL EKI_Status RET
-      
-      RET=EKI_Open(configFileName[])
-      EKI_CHECK(RET,#Quit)
-   END
-   
-   DEF RC_CLOSECONNECTION(configFileName[]:IN, strPlace[]:IN)
-      DECL CHAR configFileName[]
-      DECL CHAR strPlace[]
-      DECL EKI_Status RET
-      
+      RET = EKI_Init(configFileName[])
       WAIT SEC 0
-      RET=EKI_Close(configFileName[])
-      RET=EKI_ClearBuffer(configFileName[], strPlace[])
+      RET = EKI_Open(configFileName[])
+      WAIT SEC 0
+      EKI_CHECK(RET,#Quit)
+      Offset = 0
+      SWRITE(msg[], State, Offset, "%s initialized and opened", configFileName[])
+      RC_SETMSG(msg[])
+   END
+      
+   DEF RC_EKI_CLOSE_CLEAR(configFileName[]:IN)
+      DECL CHAR configFileName[]
+      DECL EKI_Status RET
+      DECL CHAR msg[120]
+      DECL STATE_T State
+      DECL INT Offset
+      
+      RET = EKI_Close(configFileName[])
+      WAIT SEC 0
+      RET = EKI_Clear(configFileName[])
+      WAIT SEC 0
+      Offset = 0
+      SWRITE(msg[], State, Offset, "%s closed and cleared", configFileName[])
+      RC_SETMSG(msg[])
    END
    
    DEF RC_WAITFORRESULT(WaitFlag:IN)
@@ -506,10 +511,20 @@ END
          DETECTEDGRASPS[j] = POSE
          ; For the first grasp (j=1), also read its gripper_id and grasp_id
          IF j == 1 THEN
-            ; Read the gripper_id associated with the first grasp
-            RET = EKI_GetString(configFileName[], "res/grasps/le/gripper_id", RECEIVED_GRIPPER_ID[])
-            ; Read the id (grasp_id) associated with the first grasp
-            RET = EKI_GetString(configFileName[], "res/grasps/le/id", RECEIVED_GRASP_ID[])
+            ; Read the gripper_id associated with the first grasp (optional)
+            RET = EKI_CheckBuffer(configFileName[], "res/grasps/le/gripper_id")
+            IF RET.Buff > 0 THEN
+               RET = EKI_GetString(configFileName[], "res/grasps/le/gripper_id", RECEIVED_GRIPPER_ID[])
+            ELSE
+               RECEIVED_GRIPPER_ID[] = "none"
+            ENDIF
+            ; Read the id (grasp_id) associated with the first grasp (optional)
+            RET = EKI_CheckBuffer(configFileName[], "res/grasps/le/id")
+            IF RET.Buff > 0 THEN
+               RET = EKI_GetString(configFileName[], "res/grasps/le/id", RECEIVED_GRASP_ID[])
+            ELSE
+               RECEIVED_GRASP_ID[] = "none"
+            ENDIF
          ENDIF
       ENDFOR
       RET = EKI_ClearBuffer(configFileName[], "res")
@@ -521,11 +536,10 @@ END
       
       $FLAG[1] = FALSE
       RC_SETMSG("Start")
-      RC_INIT(serviceNameStart[])
-      RC_OPENCONNECTION(serviceNameStart[])
       RET = EKI_Send(serviceNameStart[], "req")
       RC_WAITFORRESULT(1)
-      RC_CLOSECONNECTION(serviceNameStart[], "req")
+      RET = EKI_ClearBuffer(serviceNameStart[], "res")
+      RET = EKI_ClearBuffer(serviceNameStart[], "req")
    END
    
    DEF RC_STOP(serviceNameStop[]:IN)
@@ -534,11 +548,10 @@ END
       
       $FLAG[1] = FALSE
       RC_SETMSG("Stop")
-      RC_INIT(serviceNameStop[])
-      RC_OPENCONNECTION(serviceNameStop[])
       RET = EKI_Send(serviceNameStop[], "req")
       RC_WAITFORRESULT(1)
-      RC_CLOSECONNECTION(serviceNameStop[], "req")
+      RET = EKI_ClearBuffer(serviceNameStop[], "res")
+      RET = EKI_ClearBuffer(serviceNameStop[], "req")
    END
    
    DEF ResetDetectedGrasps()

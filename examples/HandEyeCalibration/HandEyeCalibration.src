@@ -63,11 +63,11 @@ DEF HandEyeCalibration()
    
    RC_SETMSG("Start HEC (8 pose)")
    
-   RC_INIT(serviceNameReset[])
-   RC_INIT(serviceNameParams[])
-   RC_INIT(serviceNameSetPose[])
-   RC_INIT(serviceNameCalibrate[])
-   RC_INIT(serviceNameSave[])
+   RC_EKI_INIT_OPEN(serviceNameReset[])
+   RC_EKI_INIT_OPEN(serviceNameParams[])
+   RC_EKI_INIT_OPEN(serviceNameSetPose[])
+   RC_EKI_INIT_OPEN(serviceNameCalibrate[])
+   RC_EKI_INIT_OPEN(serviceNameSave[])
    
    RC_HEC_RESETCALIBRATION(serviceNameReset[])
    
@@ -146,6 +146,13 @@ DEF HandEyeCalibration()
    
    RC_HEC_CALIBRATEANDSAVE(serviceNameCalibrate[], serviceNameSave[])
    
+   ; Close and clear all services
+   RC_EKI_CLOSE_CLEAR(serviceNameReset[])
+   RC_EKI_CLOSE_CLEAR(serviceNameParams[])
+   RC_EKI_CLOSE_CLEAR(serviceNameSetPose[])
+   RC_EKI_CLOSE_CLEAR(serviceNameCalibrate[])
+   RC_EKI_CLOSE_CLEAR(serviceNameSave[])
+   
    RC_SETMSG("Finish")
    
    SPTP XHOME WITH $VEL_AXIS[1] = SVEL_JOINT(100.0), $TOOL = STOOL2(FHOME), $BASE = SBASE(FHOME.BASE_NO), $IPO_MODE = SIPO_MODE(FHOME.IPO_FRAME), $LOAD = SLOAD(FHOME.TOOL_NO), $ACC_AXIS[1] = SACC_JOINT(PDEFAULT), $APO = SAPO_PTP(PDEFAULT), $GEAR_JERK[1] = SGEAR_JERK(PDEFAULT), $COLLMON_TOL_PRO[1] = USE_CM_PRO_VALUES(0)
@@ -223,33 +230,42 @@ END
       END
    ;ENDFOLD (RC_SETERRORMSG)
    
-   ;FOLD RC_INIT
-      DEF RC_INIT(configFileName[]:IN)
+   ;FOLD RC_EKI_INIT_OPEN
+      DEF RC_EKI_INIT_OPEN(configFileName[]:IN)
          DECL CHAR configFileName[]
          DECL EKI_Status RET
-         RET=EKI_INIT(configFileName[])
-      END
-   ;ENDFOLD (RC_INIT)
-   
-   ;FOLD RC_OPENCONNECTION
-      DEF RC_OPENCONNECTION(configFileName[]:IN)
-         DECL CHAR configFileName[]
-         DECL EKI_Status RET
-         RET=EKI_Open(configFileName[])
-         EKI_CHECK(RET,#Quit)
-      END
-   ;ENDFOLD (RC_OPENCONNECTION)
-   
-   ;FOLD RC_CLOSECONNECTION
-      DEF RC_CLOSECONNECTION(configFileName[]:IN, strPlace[]:IN)
-         DECL CHAR configFileName[]
-         DECL CHAR strPlace[]
-         DECL EKI_Status RET
+         DECL CHAR msg[120]
+         DECL STATE_T State
+         DECL INT Offset
+         
+         RET = EKI_Init(configFileName[])
          WAIT SEC 0
-         RET=EKI_Close(configFileName[])
-         RET=EKI_ClearBuffer(configFileName[], strPlace[])
+         RET = EKI_Open(configFileName[])
+         WAIT SEC 0
+         EKI_CHECK(RET,#Quit)
+         Offset = 0
+         SWRITE(msg[], State, Offset, "%s initialized and opened", configFileName[])
+         RC_SETMSG(msg[])
       END
-   ;ENDFOLD (RC_CLOSECONNECTION)
+   ;ENDFOLD (RC_EKI_INIT_OPEN)
+      
+   ;FOLD RC_EKI_CLOSE_CLEAR
+      DEF RC_EKI_CLOSE_CLEAR(configFileName[]:IN)
+         DECL CHAR configFileName[]
+         DECL EKI_Status RET
+         DECL CHAR msg[120]
+         DECL STATE_T State
+         DECL INT Offset
+         
+         RET = EKI_Close(configFileName[])
+         WAIT SEC 0
+         RET = EKI_Clear(configFileName[])
+         WAIT SEC 0
+         Offset = 0
+         SWRITE(msg[], State, Offset, "%s closed and cleared", configFileName[])
+         RC_SETMSG(msg[])
+      END
+   ;ENDFOLD (RC_EKI_CLOSE_CLEAR)
    
    ;FOLD RC_WAITFORRESULT
       DEF RC_WAITFORRESULT(WaitFlag:IN)
@@ -283,8 +299,6 @@ END
          DECL RETURNCODE_T RESULT
          DECL EKI_STATUS RET
          
-         RC_OPENCONNECTION(serviceNameReset[])
-         
          RET = EKI_Send(serviceNameReset[], "req")
          RC_WAITFORRESULT(1)
          
@@ -297,7 +311,8 @@ END
             RC_SETMSG("Execution failed")
             RC_SETMSG(RESULT.MSG[])
          ENDIF
-         RC_CLOSECONNECTION(serviceNameReset[], "req")
+         RET = EKI_ClearBuffer(serviceNameReset[], "res")
+         RET = EKI_ClearBuffer(serviceNameReset[], "req")
       END
    ;ENDFOLD
    
@@ -309,15 +324,14 @@ END
          DECL BOOL robotMounted
          DECL EKI_STATUS RET
          
-         RC_OPENCONNECTION(serviceNameParams[])
-         
          RET = EKI_SetReal(serviceNameParams[], "req/parameters/grid_height/@value", gridHeight)
          RET = EKI_SetReal(serviceNameParams[], "req/parameters/grid_width/@value", gridWidth)
          RET = EKI_SetBool(serviceNameParams[], "req/parameters/robot_mounted/@value", robotMounted)
          
          RET = EKI_Send(serviceNameParams[], "req")
          RC_WAITFORRESULT(1)
-         RC_CLOSECONNECTION(serviceNameParams[], "req")
+         RET = EKI_ClearBuffer(serviceNameParams[], "res")
+         RET = EKI_ClearBuffer(serviceNameParams[], "req")
       END
    ;ENDFOLD
    
@@ -336,8 +350,6 @@ END
          FOR i=1 TO 512
             nodeMessage[i] = 0
          ENDFOR
-         
-         RC_OPENCONNECTION(serviceNameSetPose[])
          
          pose = $POS_ACT_MES : INV_POS($TOOL)
          
@@ -364,7 +376,8 @@ END
             RC_SETMSG_PARAM("Set pose %1 failed", params[])
             RC_SETERRORMSG(nodeMessage[])
          ENDIF
-         RC_CLOSECONNECTION(serviceNameSetPose[], "req")
+         RET = EKI_ClearBuffer(serviceNameSetPose[], "res")
+         RET = EKI_ClearBuffer(serviceNameSetPose[], "req")
       END
    ;ENDFOLD
    
@@ -379,8 +392,6 @@ END
          DECL RETURNCODE_T RESULT
          DECL KrlMsgPar_T par[3]
          
-         RC_OPENCONNECTION(serviceNameCalibrate[])
-         
          RET = EKI_Send(serviceNameCalibrate[], "req")
          RC_WAITFORRESULT(1)
          
@@ -394,7 +405,8 @@ END
          RET = EKI_GetString(serviceNameCalibrate[], "res/message", resMessage[])
          RET = EKI_GetReal(serviceNameCalibrate[], "res/error", calibrationError)
          
-         RC_CLOSECONNECTION(serviceNameCalibrate[], "req")
+         RET = EKI_ClearBuffer(serviceNameCalibrate[], "res")
+         RET = EKI_ClearBuffer(serviceNameCalibrate[], "req")
          
          IF(rc_success) THEN
             RC_SETMSG("Calibration rc_successful.")
@@ -402,8 +414,6 @@ END
             par[1] = {par_type #value, par_real 0}
             par[1].par_real = calibrationError
             RC_SETMSG_PARAM("Calibration error: %1", par[])
-            
-            RC_OPENCONNECTION(serviceNameSave[])
             
             RET = EKI_Send(serviceNameSave[], "req")
             RC_WAITFORRESULT(1)
@@ -420,10 +430,12 @@ END
                RC_SETMSG("Calibration saved.")
             ENDIF
             
-            RC_CLOSECONNECTION(serviceNameSave[], "req")
+            RET = EKI_ClearBuffer(serviceNameSave[], "res")
+            RET = EKI_ClearBuffer(serviceNameSave[], "req")
          ELSE
             RC_SETMSG("Calibration failed.")
             RC_SETMSG(resMessage[])
+            RET = EKI_ClearBuffer(serviceNameSave[], "res")
          ENDIF
       END
    ;ENDFOLD
