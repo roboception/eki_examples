@@ -11,8 +11,8 @@ DEF CADMatch_2_Step_LC()
    ;
    ; SETUP:
    ; 1. Configure service names to match your EKI XML files
-   ; 2. Set LC_ID_TEMPLATE (carrier to detect in step 1)
-   ; 3. Set LC_ID_EXACT (carrier ID to save with exact pose)
+   ; 2. Set LC_TEMPLATE_ID (carrier to detect in step 1)
+   ; 3. Set LC_EXACT_ID (carrier ID to save with exact pose)
    ; 4. Set TEMPLATE_ID for CADMatch detection
    ; 5. Teach STARTPOSE in .dat file
    ;------------------------------------------------------------------------
@@ -20,17 +20,17 @@ DEF CADMatch_2_Step_LC()
    DECL STATE_T State
    DECL INT Offset
    DECL KrlMsgPar_T dbgPar[3]
-   
+      
    ; Service names - must match EKI XML configuration files
    serviceNameDetectLC[] = "rc_load_carrier-detect_load_carriers"
    serviceNameSetLC[] = "rc_load_carrier_db-set_load_carrier"
    serviceNameDetect[] = "rc_cadmatch-detect_object"
    
-   ; Configuration parameters
-   TEMPLATE_ID[] = "template_name"              ; CAD template to match
-   POSE_FRAME[] = "external"                    ; Reference frame
-   LC_ID_TEMPLATE[] = "auer_30x20"   ; LC to detect in step 1
-   LC_ID_EXACT[] = "lc_exact"         ; LC ID to save with exact pose
+   ; Detection configuration parameters
+   TEMPLATE_ID[] = "template_name"         ; CAD template to match
+   POSE_FRAME[] = "external"               ; Reference frame for poses
+   LC_TEMPLATE_ID[] = "lc_template"        ; LC to detect in step 1
+   LC_EXACT_ID[] = "lc_exact"              ; LC ID to save with exact pose
    
    ; Initialize robot
    ;FOLD INI
@@ -45,11 +45,11 @@ DEF CADMatch_2_Step_LC()
    INTERRUPT DECL 89 WHEN $FLAG[998] DO RC_NOTIFYRECEIVED(1, 998)
    INTERRUPT ON 89
    
-   ; Initialize all EKI services ONCE at startup
+   ; Initialize and open all EKI services
    RC_SETMSG("Initializing EKI services...")
-   RC_INIT(serviceNameDetectLC[])
-   RC_INIT(serviceNameSetLC[])
-   RC_INIT(serviceNameDetect[])
+   RC_EKI_INIT_OPEN(serviceNameDetectLC[])
+   RC_EKI_INIT_OPEN(serviceNameSetLC[])
+   RC_EKI_INIT_OPEN(serviceNameDetect[])
    
    ; Move to start position
    MoveToStartPosition()
@@ -58,7 +58,7 @@ DEF CADMatch_2_Step_LC()
    
    ; STEP 1: Detect load carrier
    RC_SETMSG("Step 1: Detecting load carrier...")
-   ConfigureLCDetect(serviceNameDetectLC[], LC_ID_TEMPLATE[], POSE_FRAME[])
+   ConfigureLCDetect(serviceNameDetectLC[], LC_TEMPLATE_ID[], POSE_FRAME[])
    PerformLCDetect(serviceNameDetectLC[])
    
    IF (RETURNCODE.VALUE >= 0) AND (NUMDETECTEDLCS > 0) THEN
@@ -66,7 +66,7 @@ DEF CADMatch_2_Step_LC()
       
       ; STEP 2: Set load carrier with exact pose
       RC_SETMSG("Step 2: Saving load carrier with EXACT_POSE...")
-      ConfigureSetLC(serviceNameSetLC[], LC_ID_EXACT[], DETECTED_LC_POSE, POSE_FRAME[], LC_INNER_X, LC_INNER_Y, LC_INNER_Z, LC_OUTER_X, LC_OUTER_Y, LC_OUTER_Z)
+      ConfigureSetLC(serviceNameSetLC[], LC_EXACT_ID[], DETECTED_LC_POSE, POSE_FRAME[], LC_INNER_X, LC_INNER_Y, LC_INNER_Z, LC_OUTER_X, LC_OUTER_Y, LC_OUTER_Z)
       PerformSetLC(serviceNameSetLC[])
       
       IF RETURNCODE.VALUE >= 0 THEN
@@ -78,7 +78,7 @@ DEF CADMatch_2_Step_LC()
          
          ; STEP 3: Perform CADMatch detection using exact load carrier
          RC_SETMSG("Step 4: Performing CADMatch detection...")
-         ConfigureCADDetect(serviceNameDetect[], TEMPLATE_ID[], POSE_FRAME[], LC_ID_EXACT[])
+         ConfigureCADDetect(serviceNameDetect[], TEMPLATE_ID[], POSE_FRAME[], LC_EXACT_ID[])
          PerformCADDetect(serviceNameDetect[])
          
          IF (RETURNCODE.VALUE >= 0) AND (NUMDETECTEDGRASPS > 0) THEN
@@ -106,6 +106,11 @@ DEF CADMatch_2_Step_LC()
    ENDIF
    
    RC_SETMSG("Workflow completed")
+   
+   ; Close and clear all services
+   RC_EKI_CLOSE_CLEAR(serviceNameDetectLC[])
+   RC_EKI_CLOSE_CLEAR(serviceNameSetLC[])
+   RC_EKI_CLOSE_CLEAR(serviceNameDetect[])
 END
 
 ; ---- Helper Functions ----
@@ -143,15 +148,11 @@ END
       DECL CHAR serviceNameDetectLC[]
       DECL EKI_STATUS RET
       
-      RC_OPENCONNECTION(serviceNameDetectLC[])
-      
-      WAIT SEC 0
       RET = EKI_Send(serviceNameDetectLC[], "req")
       
       RC_WAITFORRESULT(1)
       RC_READRESULT_LC(serviceNameDetectLC[])
-      
-      RC_CLOSECONNECTION(serviceNameDetectLC[], "req")
+      RET = EKI_ClearBuffer(serviceNameDetectLC[], "req")
    END
    
    DEF ConfigureSetLC(serviceNameSetLC[]:IN, LC_ID[]:IN, LC_POSE:IN, POSE_FRAME[]:IN, LC_INNER_X_IN:IN, LC_INNER_Y_IN:IN, LC_INNER_Z_IN:IN, LC_OUTER_X_IN:IN, LC_OUTER_Y_IN:IN, LC_OUTER_Z_IN:IN)
@@ -184,15 +185,11 @@ END
       DECL CHAR serviceNameSetLC[]
       DECL EKI_STATUS RET
       
-      RC_OPENCONNECTION(serviceNameSetLC[])
-      
-      WAIT SEC 0
       RET = EKI_Send(serviceNameSetLC[], "req")
       
       RC_WAITFORRESULT(1)
       RC_READRESULT_SIMPLE(serviceNameSetLC[])
-      
-      RC_CLOSECONNECTION(serviceNameSetLC[], "req")
+      RET = EKI_ClearBuffer(serviceNameSetLC[], "req")
    END
    
    DEF ConfigureCADDetect(serviceNameDetect[]:IN, TEMPLATE_ID[]:IN, POSE_FRAME[]:IN, LOAD_CARRIER_ID[]:IN)
@@ -217,15 +214,11 @@ END
       DECL CHAR serviceNameDetect[]
       DECL EKI_STATUS RET
       
-      RC_OPENCONNECTION(serviceNameDetect[])
-      
-      WAIT SEC 0
       RET = EKI_Send(serviceNameDetect[], "req")
       
       RC_WAITFORRESULT(1)
       RC_READRESULT_CADMATCH(serviceNameDetect[])
-      
-      RC_CLOSECONNECTION(serviceNameDetect[], "req")
+      RET = EKI_ClearBuffer(serviceNameDetect[], "req")
    END
    
    DEF DisplayGraspPose(Index:IN)
@@ -410,29 +403,37 @@ END
       Handle=Set_KrlMsg(Type, name, params[], options)
    END
    
-   DEF RC_INIT(configFileName[]:IN)
+   DEF RC_EKI_INIT_OPEN(configFileName[]:IN)
       DECL CHAR configFileName[]
       DECL EKI_Status RET
+      DECL CHAR msg[120]
+      DECL STATE_T State
+      DECL INT Offset
       
-      RET=EKI_INIT(configFileName[])
-   END
-   
-   DEF RC_OPENCONNECTION(configFileName[]:IN)
-      DECL CHAR configFileName[]
-      DECL EKI_Status RET
-      
-      RET=EKI_Open(configFileName[])
-      EKI_CHECK(RET,#Quit)
-   END
-   
-   DEF RC_CLOSECONNECTION(configFileName[]:IN, strPlace[]:IN)
-      DECL CHAR configFileName[]
-      DECL CHAR strPlace[]
-      DECL EKI_Status RET
-      
+      RET = EKI_Init(configFileName[])
       WAIT SEC 0
-      RET=EKI_Close(configFileName[])
-      RET=EKI_ClearBuffer(configFileName[], strPlace[])
+      RET = EKI_Open(configFileName[])
+      WAIT SEC 0
+      EKI_CHECK(RET,#Quit)
+      Offset = 0
+      SWRITE(msg[], State, Offset, "%s initialized and opened", configFileName[])
+      RC_SETMSG(msg[])
+   END
+      
+   DEF RC_EKI_CLOSE_CLEAR(configFileName[]:IN)
+      DECL CHAR configFileName[]
+      DECL EKI_Status RET
+      DECL CHAR msg[120]
+      DECL STATE_T State
+      DECL INT Offset
+      
+      RET = EKI_Close(configFileName[])
+      WAIT SEC 0
+      RET = EKI_Clear(configFileName[])
+      WAIT SEC 0
+      Offset = 0
+      SWRITE(msg[], State, Offset, "%s closed and cleared", configFileName[])
+      RC_SETMSG(msg[])
    END
    
    DEF RC_WAITFORRESULT(WaitFlag:IN)

@@ -96,7 +96,7 @@ DEF BoxPick()
    
    GRIPPEROPEN()
    
-   RC_INIT(serviceNameDetect[])
+   RC_EKI_INIT_OPEN(serviceNameDetect[])
    
    ;
    ; Main program loop
@@ -154,6 +154,9 @@ DEF BoxPick()
          EXIT
       ENDIF
    ENDLOOP
+   
+   ; Close and clear service
+   RC_EKI_CLOSE_CLEAR(serviceNameDetect[])
    
    ; Clean up and return home
    
@@ -245,19 +248,17 @@ END
 
 DEF PerformDetection(serviceNameDetect[]:IN)
    ;
-   ; Opens connection, sends detection request, waits for result, reads it, and closes connection
+   ; Sends detection request, waits for result, reads it, and clears buffer
    ;
    ; @param serviceNameDetect[]: EKI configuration/service name
    ;
    DECL CHAR serviceNameDetect[]
    DECL EKI_STATUS RET
    
-   RC_OPENCONNECTION(serviceNameDetect[])
-   WAIT SEC 0
    RET = EKI_Send(serviceNameDetect[], "req")
    RC_WAITFORRESULT(1)
    RC_READRESULT(serviceNameDetect[])
-   RC_CLOSECONNECTION(serviceNameDetect[], "req")
+   RET = EKI_ClearBuffer(serviceNameDetect[], "req")
 END
 
 DEFFCT BOOL DetectionSuccessful()
@@ -427,33 +428,42 @@ END
       END
    ;ENDFOLD (RC_SETMSG_PARAM)
    
-   ;FOLD RC_INIT
-      DEF RC_INIT(configfilename[]:IN)
-         DECL CHAR configfilename[]
-         DECL EKI_STATUS RET
-         RET = EKI_INIT(configfilename[])
-      END
-   ;ENDFOLD (RC_INIT)
-   
-   ;FOLD RC_OPENCONNECTION
-      DEF RC_OPENCONNECTION(configfilename[]:IN)
-         DECL CHAR configfilename[]
-         DECL EKI_STATUS RET
-         RET = EKI_Open(configfilename[])
-         EKI_CHECK(RET,#Quit)
-      END
-   ;ENDFOLD (RC_OPENCONNECTION)
-   
-   ;FOLD RC_CLOSECONNECTION
-      DEF RC_CLOSECONNECTION(configfilename[]:IN, strplace[]:IN)
-         DECL CHAR configfilename[]
-         DECL CHAR strplace[]
-         DECL EKI_STATUS RET
+   ;FOLD RC_EKI_INIT_OPEN
+      DEF RC_EKI_INIT_OPEN(configFileName[]:IN)
+         DECL CHAR configFileName[]
+         DECL EKI_Status RET
+         DECL CHAR msg[120]
+         DECL STATE_T State
+         DECL INT Offset
+         
+         RET = EKI_Init(configFileName[])
          WAIT SEC 0
-         RET = EKI_Close(configfilename[])
-         RET = EKI_ClearBuffer(configfilename[], strplace[])
+         RET = EKI_Open(configFileName[])
+         WAIT SEC 0
+         EKI_CHECK(RET,#Quit)
+         Offset = 0
+         SWRITE(msg[], State, Offset, "%s initialized and opened", configFileName[])
+         RC_SETMSG(msg[])
       END
-   ;ENDFOLD (RC_CLOSECONNECTION)
+   ;ENDFOLD (RC_EKI_INIT_OPEN)
+      
+   ;FOLD RC_EKI_CLOSE_CLEAR
+      DEF RC_EKI_CLOSE_CLEAR(configFileName[]:IN)
+         DECL CHAR configFileName[]
+         DECL EKI_Status RET
+         DECL CHAR msg[120]
+         DECL STATE_T State
+         DECL INT Offset
+         
+         RET = EKI_Close(configFileName[])
+         WAIT SEC 0
+         RET = EKI_Clear(configFileName[])
+         WAIT SEC 0
+         Offset = 0
+         SWRITE(msg[], State, Offset, "%s closed and cleared", configFileName[])
+         RC_SETMSG(msg[])
+      END
+   ;ENDFOLD (RC_EKI_CLOSE_CLEAR)
    
    ;FOLD RC_WAITFORRESULT
       DEF RC_WAITFORRESULT(waitflag:IN)

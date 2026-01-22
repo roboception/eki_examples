@@ -29,8 +29,8 @@ DEF EstimateRobotPose()
    ;------------------------------------------------------------------------
    ; Service names - MUST match exactly with your EKI XML configuration files
    ; Initialize EKI connections with better error handling
-   serviceNameEstimate[] = "new_lab_1_rc_hand_eye_calibration-estimate_robot_pose"
-   serviceNameDetect[] = "new_lab_1_rc_april_tag_detect-detect"
+   serviceNameEstimate[] = "rc_hand_eye_calibration-estimate_robot_pose"
+   serviceNameDetect[] = "rc_april_tag_detect-detect"
    
    ;FOLD INI;%{PE}
       ;FOLD BASISTECH INI
@@ -43,8 +43,8 @@ DEF EstimateRobotPose()
    INTERRUPT DECL 89 WHEN $FLAG[998] DO RC_NOTIFYRECEIVED(1, 998)
    INTERRUPT ON 89
    
-   RC_INIT(serviceNameEstimate[])
-   RC_INIT(serviceNameDetect[])
+   RC_EKI_INIT_OPEN(serviceNameEstimate[])
+   RC_EKI_INIT_OPEN(serviceNameDetect[])
    
    LOOP
       ;FOLD SPTP HOME Vel=10 % DEFAULT ;%{PE}
@@ -134,6 +134,10 @@ DEF EstimateRobotPose()
       ENDIF     
       
    ENDLOOP
+   
+   ; Close and clear services
+   RC_EKI_CLOSE_CLEAR(serviceNameDetect[])
+   RC_EKI_CLOSE_CLEAR(serviceNameEstimate[])
 END
 
 ; Helper function for grasp pose calculation using FCT
@@ -204,33 +208,42 @@ DEF RC_SETMSG_PARAM(msg[]:IN, params:OUT)
    Handle=Set_KrlMsg(Type, name, params[], options)
 END
 
-;FOLD RC_INIT
-   DEF RC_INIT(configFileName[]:IN)
+;FOLD RC_EKI_INIT_OPEN
+   DEF RC_EKI_INIT_OPEN(configFileName[]:IN)
       DECL CHAR configFileName[]
       DECL EKI_Status RET
-      RET=EKI_INIT(configFileName[])
-   END
-;ENDFOLD (RC_INIT)
-
-;FOLD RC_OPENCONNECTION
-   DEF RC_OPENCONNECTION(configFileName[]:IN)
-      DECL CHAR configFileName[]
-      DECL EKI_Status RET
-      RET = EKI_Open(configFileName[])
-      EKI_CHECK(RET,#Quit)    ; This will quit if connection fails
-   END
-;ENDFOLD (RC_OPENCONNECTION)
-
-;FOLD RC_CLOSECONNECTION
-   DEF RC_CLOSECONNECTION(configFileName[]:IN, strPlace[]:IN)
-      DECL CHAR configFileName[]
-      DECL CHAR strPlace[]
-      DECL EKI_Status RET
+      DECL CHAR msg[120]
+      DECL STATE_T State
+      DECL INT Offset
+      
+      RET = EKI_Init(configFileName[])
       WAIT SEC 0
-      RET=EKI_Close(configFileName[])
-      RET=EKI_ClearBuffer(configFileName[], strPlace[])
+      RET = EKI_Open(configFileName[])
+      WAIT SEC 0
+      EKI_CHECK(RET,#Quit)
+      Offset = 0
+      SWRITE(msg[], State, Offset, "%s initialized and opened", configFileName[])
+      RC_SETMSG(msg[])
    END
-;ENDFOLD (RC_CLOSECONNECTION)
+;ENDFOLD (RC_EKI_INIT_OPEN)
+      
+;FOLD RC_EKI_CLOSE_CLEAR
+   DEF RC_EKI_CLOSE_CLEAR(configFileName[]:IN)
+      DECL CHAR configFileName[]
+      DECL EKI_Status RET
+      DECL CHAR msg[120]
+      DECL STATE_T State
+      DECL INT Offset
+      
+      RET = EKI_Close(configFileName[])
+      WAIT SEC 0
+      RET = EKI_Clear(configFileName[])
+      WAIT SEC 0
+      Offset = 0
+      SWRITE(msg[], State, Offset, "%s closed and cleared", configFileName[])
+      RC_SETMSG(msg[])
+   END
+;ENDFOLD (RC_EKI_CLOSE_CLEAR)
 
 ;FOLD RC_WAITFORRESULT
    DEF RC_WAITFORRESULT(WaitFlag:IN)
@@ -273,13 +286,10 @@ END
       DECL FRAME POSE
       flangePose = $POS_ACT_MES : INV_POS($TOOL)
       
-      RC_OPENCONNECTION(serviceNameDetect[])
-      
       RET = EKI_SetString(serviceNameDetect[], "req/args/pose_frame", "external")
       RET = EKI_SetFrame(serviceNameDetect[], "req/args/robot_pose", flangePose)
       
-      ; Synchronize advance run pointer
-      WAIT SEC 0
+      ; Send request
       RET = EKI_Send(serviceNameDetect[], "req")
       RC_WAITFORRESULT(1)
       
@@ -319,8 +329,6 @@ END
       endfor
       
       RET = EKI_ClearBuffer(serviceNameDetect[], "res")
-      
-      RC_CLOSECONNECTION(serviceNameDetect[], "req")
    END
 ;ENDFOLD (AprilTagDetection)
 
@@ -378,8 +386,6 @@ END
       
       ; FORCE SYNC
       WAIT SEC 0
-      ; Open connection before sending request
-      RC_OPENCONNECTION(serviceNameEstimate[])
       
       ; Call estimate robot pose service
       RET = EKI_Send(serviceNameEstimate[], "req")
@@ -450,8 +456,5 @@ END
       
       ; Clear buffer after reading results
       RET = EKI_ClearBuffer(serviceNameEstimate[], "res")
-      
-      ; Close connection after reading results
-      RC_CLOSECONNECTION(serviceNameEstimate[], "req")
    END
 ;ENDFOLD (RC_ESTIMATEROBOTPOSE)

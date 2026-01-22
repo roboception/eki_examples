@@ -36,11 +36,11 @@ DEF ItemPick()
    SUCTION_WIDTH = 0.02   ; Matches EKI specification
    ITEM_TYPE[] = "BAG"  ; "BAG" for bags or " " for any other item
    LOAD_CARRIER_ID[] = " " ; Single space to represent empty/none
-   ROI_ID[] = "roi_bags"
+   ROI_ID[] = "item_pick_roi"
    POSE_FRAME[] = "external"
    
    ; Collision detection parameters - use " " to skip sending
-   GRIPPER_ID[] = "SingleVacuum"    ; Gripper identifier for collision detection
+   GRIPPER_ID[] = "vacuum_gripper"    ; Gripper identifier for collision detection
    DET_PRE_GRASP_X_OFFSET = 0.0     ; Detection pre-grasp offset in X direction (m) - SEPARATE from movement offset
    DET_PRE_GRASP_Y_OFFSET = 0.0     ; Detection pre-grasp offset in Y direction (m) - SEPARATE from movement offset  
    DET_PRE_GRASP_Z_OFFSET = -0.1    ; Detection pre-grasp offset in Z direction (m) - SEPARATE from movement offset
@@ -69,7 +69,7 @@ DEF ItemPick()
    
    GRIPPERBLOW()
    
-   RC_INIT(serviceNameDetect[])
+   RC_EKI_INIT_OPEN(serviceNameDetect[])
    
    ;
    ; Main program loop
@@ -127,6 +127,9 @@ DEF ItemPick()
          EXIT
       ENDIF
    ENDLOOP
+   
+   ; Close and clear service
+   RC_EKI_CLOSE_CLEAR(serviceNameDetect[])
    
    ; Clean up and return home
    
@@ -305,33 +308,42 @@ END
       END
    ;ENDFOLD (RC_SETMSG_PARAM)
    
-   ;FOLD RC_INIT
-      DEF RC_INIT(configfilename[]:IN)
-         DECL CHAR configfilename[]
-         DECL EKI_STATUS RET
-         RET = EKI_INIT(configfilename[])
-      END
-   ;ENDFOLD (RC_INIT)
-   
-   ;FOLD RC_OPENCONNECTION
-      DEF RC_OPENCONNECTION(configfilename[]:IN)
-         DECL CHAR configfilename[]
-         DECL EKI_STATUS RET
-         RET = EKI_Open(configfilename[])
-         EKI_CHECK(RET,#Quit)
-      END
-   ;ENDFOLD (RC_OPENCONNECTION)
-   
-   ;FOLD RC_CLOSECONNECTION
-      DEF RC_CLOSECONNECTION(configfilename[]:IN, strplace[]:IN)
-         DECL CHAR configfilename[]
-         DECL CHAR strplace[]
-         DECL EKI_STATUS RET
+   ;FOLD RC_EKI_INIT_OPEN
+      DEF RC_EKI_INIT_OPEN(configFileName[]:IN)
+         DECL CHAR configFileName[]
+         DECL EKI_Status RET
+         DECL CHAR msg[120]
+         DECL STATE_T State
+         DECL INT Offset
+         
+         RET = EKI_Init(configFileName[])
          WAIT SEC 0
-         RET = EKI_Close(configfilename[])
-         RET = EKI_ClearBuffer(configfilename[], strplace[])
+         RET = EKI_Open(configFileName[])
+         WAIT SEC 0
+         EKI_CHECK(RET,#Quit)
+         Offset = 0
+         SWRITE(msg[], State, Offset, "%s initialized and opened", configFileName[])
+         RC_SETMSG(msg[])
       END
-   ;ENDFOLD (RC_CLOSECONNECTION)
+   ;ENDFOLD (RC_EKI_INIT_OPEN)
+      
+   ;FOLD RC_EKI_CLOSE_CLEAR
+      DEF RC_EKI_CLOSE_CLEAR(configFileName[]:IN)
+         DECL CHAR configFileName[]
+         DECL EKI_Status RET
+         DECL CHAR msg[120]
+         DECL STATE_T State
+         DECL INT Offset
+         
+         RET = EKI_Close(configFileName[])
+         WAIT SEC 0
+         RET = EKI_Clear(configFileName[])
+         WAIT SEC 0
+         Offset = 0
+         SWRITE(msg[], State, Offset, "%s closed and cleared", configFileName[])
+         RC_SETMSG(msg[])
+      END
+   ;ENDFOLD (RC_EKI_CLOSE_CLEAR)
    
    ;FOLD RC_WAITFORRESULT
       DEF RC_WAITFORRESULT(waitflag:IN)
@@ -419,12 +431,6 @@ END
       DECL CHAR serviceNameDetect[]
       DECL EKI_Status RET
       
-      ; Open connection before sending request
-      RC_OPENCONNECTION(serviceNameDetect[])
-      
-      ; Synchronize advance run pointer
-      WAIT SEC 0
-      
       ; Send request
       RET = EKI_Send(serviceNameDetect[], "req")
       
@@ -432,8 +438,8 @@ END
       RC_WAITFORRESULT(1)
       RC_READRESULT(serviceNameDetect[])
       
-      ; Close the connection after reading results
-      RC_CLOSECONNECTION(serviceNameDetect[], "req")
+      ; Clear buffer
+      RET = EKI_ClearBuffer(serviceNameDetect[], "req")
    END
    
    DEF LogGraspInfo(currentGrasp:IN, pose:IN)
