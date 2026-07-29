@@ -1,0 +1,196 @@
+&ACCESS RVP
+&PARAM EDITMASK = *
+DEF TeachGrasps( )
+   ;------------------------------------------------------------------------
+   ; TeachGrasps Program - CADMatch GPR (Grasp Pose Registry) Teach Utility
+   ;
+   ; WORKFLOW FOR TEACHING GRASP POSES (T1 to T10) WITHOUT PROGRAM MOTION:
+   ; 1. Open this program (TeachGrasps) on the KUKA SmartPAD.
+   ; 2. Jog/move the robot physical TCP to the desired grasp pose on the object.
+   ; 3. Select any empty line or area in the program on the SmartPAD.
+   ; 4. Select "Motion-command" (Inline Form) from the menu.
+   ; 5. Set the point name to "T1" (up to "T10"). Note: Do not type the "X",
+   ;    as the system autogenerates "XT1" to "XT10" in the DAT file.
+   ; 6. Press the "Touch Up" button on the SmartPAD and select "Yes" to overwrite.
+   ; 7. Press "Cancel" to discard adding the motion instruction to the SRC file.
+   ;    This updates the XT1...XT10 coordinates in the DAT file, keeping
+   ;    the program free of unnecessary motion commands.
+   ; 8. Repeat steps 2-7 for up to 10 grasp poses (using T1 to T10).
+   ; 9. Run the program. It automatically checks XT1...XT10, skips any un-taught
+   ;    zero-initialized poses, and sends the taught poses to the rc_cube.
+   ;------------------------------------------------------------------------
+   
+   DECL EKI_STATUS RET
+   DECL INT RcValue
+   DECL INT TsSec
+   DECL INT TsNsec
+   DECL CHAR RcMsg[256]
+   DECL E6POS flangePose
+   
+   ; Formatting variables
+   DECL CHAR tempMsg[120]
+   DECL STATE_T State
+   DECL INT Offset
+   
+   ; Loop variables for TCP poses
+   DECL E6POS poses[10]
+   DECL INT i
+   DECL INT totalTaught
+   DECL INT lastTaughtIdx
+   
+   ; --- mandatory robot init: do not omit ---
+   ;FOLD INI
+      ;FOLD BASISTECH INI
+         GLOBAL INTERRUPT DECL 3 WHEN $STOPMESS==TRUE DO IR_STOPM()
+         INTERRUPT ON 3
+         BAS(#INITMOV,0)
+      ;ENDFOLD
+   ;ENDFOLD
+   
+   serviceName[] = "detect_object_and_teach_grasps"
+   TeachingRoi[] = " "
+   TeachingTemplate[] = "template_name"
+   
+   ; Receive-complete interrupt: res tag sets flag 998 in your EKI XML
+   INTERRUPT DECL 89 WHEN $FLAG[998] DO EKI_RES_DONE()
+   INTERRUPT ON 89
+   $FLAG[998] = FALSE
+   $FLAG[1]   = FALSE
+   
+   ;FOLD SPTP STARTPOSE Vel=100 % DEFAULT
+      SPTP STARTPOSE WITH $VEL_AXIS[1]= SVEL_JOINT(100), $TOOL= STOOL2(fDatDefault), $BASE= SBASE(fDatDefault.BASE_NO), $IPO_MODE= SIPO_MODE(fDatDefault.IPO_FRAME), $LOAD= SLOAD(fDatDefault.TOOL_NO), $ACC_AXIS[1]= SACC_JOINT(PDEFAULT), $GEAR_JERK[1]= SGEAR_JERK(PDEFAULT)
+   ;ENDFOLD
+
+   ; --- Optional: Gripper actuation ---
+   ; Add your gripper initialization / actuation commands here if needed.
+   
+   ; Load + open channel
+   RC_SETMSG("Opening EKI channel...")
+   RET = EKI_Init(serviceName[])
+   RET = EKI_Open(serviceName[])
+   
+   flangePose = $POS_ACT_MES : INV_POS($TOOL)
+   
+   ; Required request fields only
+   RET = EKI_SetString(serviceName[],"req/node/rc_cadmatch","rc_cadmatch")
+   RET = EKI_SetString(serviceName[],"req/service/detect_object_and_teach_grasps","detect_object_and_teach_grasps")
+   RET = EKI_SetFrame(serviceName[],"req/args/robot_pose",flangePose)
+   
+   ; Copy XT1..XT10 into poses array for looping
+   poses[1] = XT01
+   poses[2] = XT02
+   poses[3] = XT03
+   poses[4] = XT04
+   poses[5] = XT05
+   poses[6] = XT06
+   poses[7] = XT07
+   poses[8] = XT08
+   poses[9] = XT09
+   poses[10] = XT10
+   
+   ; Count taught poses and find the last taught index
+   totalTaught = 0
+   lastTaughtIdx = 0
+   FOR i = 1 TO 10
+      IF (poses[i].X <> 0.0) OR (poses[i].Y <> 0.0) OR (poses[i].Z <> 0.0) OR (poses[i].A <> 0.0) OR (poses[i].B <> 0.0) OR (poses[i].C <> 0.0) THEN
+         totalTaught = totalTaught + 1
+         lastTaughtIdx = i
+      ENDIF
+   ENDFOR
+   
+   ; Loop and send poses following the EKI array protocol
+   IF totalTaught > 0 THEN
+      FOR i = 1 TO 10
+         IF (poses[i].X <> 0.0) OR (poses[i].Y <> 0.0) OR (poses[i].Z <> 0.0) OR (poses[i].A <> 0.0) OR (poses[i].B <> 0.0) OR (poses[i].C <> 0.0) THEN
+            ; Set the pose in the nested element
+            RET = EKI_SetFrame(serviceName[], "req/args/tcp_poses/le/pose", poses[i])
+            
+            ; If it is not the last taught element, send it separately and clear
+            IF i < lastTaughtIdx THEN
+               RET = EKI_Send(serviceName[], "req/args/tcp_poses/le")
+               RET = EKI_ClearBuffer(serviceName[], "req/args/tcp_poses/le")
+            ENDIF
+         ENDIF
+      ENDFOR
+   ENDIF
+   
+   RET = EKI_SetString(serviceName[],"req/args/template_id",TeachingTemplate[])
+   IF TeachingRoi[1] <> " " THEN
+      RET = EKI_SetString(serviceName[],"req/args/region_of_interest_id",TeachingRoi[])
+   ENDIF
+   RET = EKI_SetBool(serviceName[],"req/end_of_request",TRUE)
+   
+   WAIT SEC 0
+   RC_SETMSG("Sending teach request...")
+   RET = EKI_Send(serviceName[],"req")
+   
+   RC_SETMSG("Waiting for response...")
+   WAIT FOR $FLAG[1]
+   $FLAG[1] = FALSE
+   
+   ; Read response
+   RcValue = 0
+   TsSec   = 0
+   TsNsec  = 0
+   RcMsg[] = " "
+   
+   RET = EKI_GetInt(serviceName[],"res/return_code/@value",RcValue)
+   RET = EKI_GetString(serviceName[],"res/return_code/@message",RcMsg[])
+   RET = EKI_GetInt(serviceName[],"res/timestamp/@sec",TsSec)
+   RET = EKI_GetInt(serviceName[],"res/timestamp/@nsec",TsNsec)
+   
+   ; Print response result
+   Offset = 0
+   IF RcValue < 0 THEN
+      SWRITE(tempMsg[], State, Offset, "API Error (%d): %s", RcValue, RcMsg[])
+   ELSE
+      SWRITE(tempMsg[], State, Offset, "Teach Success (%d): %s", RcValue, RcMsg[])
+   ENDIF
+   RC_SETMSG(tempMsg[])
+   
+   ; Clean close
+   RET = EKI_ClearBuffer(serviceName[],"req")
+   RET = EKI_ClearBuffer(serviceName[],"res")
+   RET = EKI_Close(serviceName[])
+   RC_SETMSG("EKI channel closed.")
+END
+
+DEF EKI_RES_DONE()
+   $FLAG[998] = FALSE
+   $FLAG[1]   = TRUE
+END
+
+DEF RC_SETMSG(msg[]:IN)
+   DECL CHAR msg[]
+   DECL KrlMsgPar_T params[3]
+   
+   RC_SETMSG_PARAM(msg[], params[])
+END
+
+DEF RC_SETMSG_PARAM(msg[]:IN, params:OUT)
+   DECL CHAR msg[]
+   DECL KrlMsgPar_T params[]
+   
+   DECL KrlMsg_T name
+   DECL KrlMsgOpt_T options
+   DECL INT Handle, len, count
+   DECL EKrlMsgType Type
+   
+   name={modul[] "rc", nr 1, msg_txt[] " "}
+   
+   Type=#notify
+   
+   len=STRLEN(msg[])
+   IF len>0 THEN
+      IF len>80 THEN
+         len=80
+      ENDIF
+      FOR count=1 TO len
+         name.msg_txt[count]=msg[count]
+      ENDFOR
+   ELSE
+      name.msg_txt[]="parameter msg[] is missing"
+   ENDIF
+   
+   Handle=Set_KrlMsg(Type, name, params[], options)
+END
