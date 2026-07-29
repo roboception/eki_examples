@@ -87,6 +87,8 @@ DEF BoxPick()
       ;ENDFOLD (BASISTECH INI)
    ;ENDFOLD (INI)
    
+   GripperInit()
+   
    INTERRUPT DECL 89 WHEN $flag[998] DO RC_NOTIFYRECEIVED(1, 998)
    INTERRUPT ON 89
    
@@ -94,7 +96,7 @@ DEF BoxPick()
       SPTP XHOME WITH $VEL_AXIS[1] = SVEL_JOINT(ptpSpeedHigh)
    ;ENDFOLD
    
-   GRIPPEROPEN()
+   GripperBlow()
    
    RC_EKI_INIT_OPEN(serviceNameDetect[])
    
@@ -208,37 +210,40 @@ DEF ExecutePickAndPlace(GRASPPOSE:IN, PLACEPOSE:IN, PRE_GRASP_Z_OFFSET:IN, PRE_P
    ;ENDFOLD
    
    ; Grip the object
-   GRIPPERCLOSE()
-   WAIT SEC 0.5
+   GripperSuck()
    
    ; Lift to pre-grasp position
    ;FOLD SLIN PREGRASPPOSE vel=0.080 m/s SLOW Speed In-Bin ;%{pe}
       SLIN PREGRASPPOSE WITH $VEL = SVEL_CP(linSpeedSlow), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO), $IPO_MODE = SIPO_MODE(fDatDefault.IPO_FRAME), $LOAD = SLOAD(fDatDefault.TOOL_NO), $ACC = SACC_CP(lDatSlow), $ORI_TYPE = SORI_TYP(lDatSlow), $JERK = SJERK(lDatSlow)
    ;ENDFOLD
    
-   ; Move to over-bin position
-   ;FOLD SPTP OVERBINPOSE vel=75 % HIGH Speed Transit ;%{pe}
-      SPTP OVERBINPOSE WITH $VEL_AXIS[1] = SVEL_JOINT(ptpSpeedHigh)
-   ;ENDFOLD
-   
-   ; Move to pre-place position
-   ;FOLD SLIN PREPLACEPOSE vel=0.400 m/s HIGH Speed Transit ;%{pe}
-      SLIN PREPLACEPOSE WITH $VEL = SVEL_CP(linSpeedHigh), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO), $IPO_MODE = SIPO_MODE(fDatDefault.IPO_FRAME), $LOAD = SLOAD(fDatDefault.TOOL_NO), $ACC = SACC_CP(lDatHigh), $ORI_TYPE = SORI_TYP(lDatHigh), $JERK = SJERK(lDatHigh)
-   ;ENDFOLD
-   
-   ; Move to place position
-   ;FOLD SLIN PLACEPOSE vel=0.080 m/s SLOW Speed Placement ;%{pe}
-      SLIN PLACEPOSE WITH $VEL = SVEL_CP(linSpeedSlow), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO), $IPO_MODE = SIPO_MODE(fDatDefault.IPO_FRAME), $LOAD = SLOAD(fDatDefault.TOOL_NO), $ACC = SACC_CP(lDatSlow), $ORI_TYPE = SORI_TYP(lDatSlow), $JERK = SJERK(lDatSlow)
-   ;ENDFOLD
-   
-   ; Release the object
-   GRIPPEROPEN()
-   WAIT SEC 0.5
-   
-   ; Return to pre-place position
-   ;FOLD SLIN PREPLACEPOSE vel=0.200 m/s MEDIUM Speed Retract ;%{pe}
-      SLIN PREPLACEPOSE WITH $VEL = SVEL_CP(linSpeedMedium), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO), $IPO_MODE = SIPO_MODE(fDatDefault.IPO_FRAME), $LOAD = SLOAD(fDatDefault.TOOL_NO), $ACC = SACC_CP(lDatMedium), $ORI_TYPE = SORI_TYP(lDatMedium), $JERK = SJERK(lDatMedium)
-   ;ENDFOLD
+   IF GripperHasVacuum() THEN
+      ; Move to over-bin position
+      ;FOLD SPTP OVERBINPOSE vel=75 % HIGH Speed Transit ;%{pe}
+         SPTP OVERBINPOSE WITH $VEL_AXIS[1] = SVEL_JOINT(ptpSpeedHigh)
+      ;ENDFOLD
+      
+      ; Move to pre-place position
+      ;FOLD SLIN PREPLACEPOSE vel=0.400 m/s HIGH Speed Transit ;%{pe}
+         SLIN PREPLACEPOSE WITH $VEL = SVEL_CP(linSpeedHigh), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO), $IPO_MODE = SIPO_MODE(fDatDefault.IPO_FRAME), $LOAD = SLOAD(fDatDefault.TOOL_NO), $ACC = SACC_CP(lDatHigh), $ORI_TYPE = SORI_TYP(lDatHigh), $JERK = SJERK(lDatHigh)
+      ;ENDFOLD
+      
+      ; Move to place position
+      ;FOLD SLIN PLACEPOSE vel=0.080 m/s SLOW Speed Placement ;%{pe}
+         SLIN PLACEPOSE WITH $VEL = SVEL_CP(linSpeedSlow), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO), $IPO_MODE = SIPO_MODE(fDatDefault.IPO_FRAME), $LOAD = SLOAD(fDatDefault.TOOL_NO), $ACC = SACC_CP(lDatSlow), $ORI_TYPE = SORI_TYP(lDatSlow), $JERK = SJERK(lDatSlow)
+      ;ENDFOLD
+      
+      ; Release the object
+      GripperBlow()
+      
+      ; Return to pre-place position
+      ;FOLD SLIN PREPLACEPOSE vel=0.200 m/s MEDIUM Speed Retract ;%{pe}
+         SLIN PREPLACEPOSE WITH $VEL = SVEL_CP(linSpeedMedium), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO), $IPO_MODE = SIPO_MODE(fDatDefault.IPO_FRAME), $LOAD = SLOAD(fDatDefault.TOOL_NO), $ACC = SACC_CP(lDatMedium), $ORI_TYPE = SORI_TYP(lDatMedium), $JERK = SJERK(lDatMedium)
+      ;ENDFOLD
+   ELSE
+      RC_SETMSG("No vacuum detected - skipping placement")
+      GripperBlow()
+   ENDIF
    
    ; Return to over-bin position
    ;FOLD SPTP OVERBINPOSE vel=75 % HIGH Speed Transit ;%{pe}
@@ -292,20 +297,38 @@ DEF LogGraspInfo(graspNum:IN, graspPose:IN)
    par[3].par_REAL = graspPose.Y
    RC_SETMSG_PARAM("Processing grasp %1: X=%2, Y=%3", par[])
 END
-
-DEF GRIPPEROPEN()
-   ; Open gripper (placeholder - implement based on your gripper)
-   RC_SETMSG("Gripper: Opening")
-   ; Example: $OUT[1] = FALSE
-   ; WAIT SEC 0.3
+;FOLD GripperInit
+DEF GripperInit()
+   ; Initialize gripper hardware here
+   RC_SETMSG("Gripper: Initializing...")
 END
+;ENDFOLD (GripperInit)
 
-DEF GRIPPERCLOSE()
-   ; Close gripper (placeholder - implement based on your gripper)
-   RC_SETMSG("Gripper: Closing")
+;FOLD GripperSuck
+DEF GripperSuck()
+   ; Suction ON (placeholder - implement based on your gripper)
+   RC_SETMSG("Gripper: Suction ON")
    ; Example: $OUT[1] = TRUE
-   ; WAIT SEC 0.3
+   WAIT SEC 0.5
 END
+;ENDFOLD (GripperSuck)
+
+;FOLD GripperBlow
+DEF GripperBlow()
+   ; Suction OFF / Blow (placeholder - implement based on your gripper)
+   RC_SETMSG("Gripper: Suction OFF (Blow)")
+   ; Example: $OUT[1] = FALSE
+   WAIT SEC 0.5
+END
+;ENDFOLD (GripperBlow)
+
+;FOLD GripperHasVacuum
+DEFFCT BOOL GripperHasVacuum()
+   ; Vacuum check (placeholder - implement based on your gripper)
+   ; Example: RETURN $IN[1]
+   RETURN TRUE
+ENDFCT
+;ENDFOLD (GripperHasVacuum)
 
 ; ---- Roboception Functions ----
 ;FOLD RC Functions

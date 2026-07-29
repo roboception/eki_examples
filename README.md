@@ -1,4 +1,4 @@
-# EKI-Examples
+# <img src="logos/rc_eki.svg" alt="Roboception EKI Logo" height="45" align="right" /> EKI-Examples
 
 This repository provides example applications demonstrating how to integrate [rc_visard](https://roboception.com/rc_visard) 
 or [rc_cube](https://roboception.com/product/rc_cube-s/) devices with KUKA robots using the EKI (Ethernet KRL) interface.
@@ -68,7 +68,7 @@ ENDDAT
 DEF ProgramName()
    DECL GLOBAL BOOL EKI_DETECT_INITIALIZED
    
-
+   EKI_DETECT_INITIALIZED = FALSE  ; Reset at program start
    
    IF NOT EKI_DETECT_INITIALIZED THEN
       RET = EKI_INIT(serviceNameDetect[])

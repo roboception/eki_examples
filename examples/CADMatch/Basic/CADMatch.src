@@ -69,7 +69,7 @@ DEF CADMatch()
    MAX_DETECTION_RETRIES = 3        ; Maximum number of detection attempts
    
    ; Gripper configuration
-   defaultOpening = 100.0           ; Set your default gripper opening here
+   defaultOpening = 30.0           ; Set your default gripper opening here
    
    ; Initialize robot and set up interrupts
    ;FOLD INI
@@ -79,6 +79,8 @@ DEF CADMatch()
          BAS(#INITMOV,0)
       ;ENDFOLD (BASISTECH INI)
    ;ENDFOLD (INI)
+   
+   GripperInit()
    
    ; Initialize message received interrupt for EKI communication
    INTERRUPT DECL 89 WHEN $FLAG[998] DO RC_NOTIFYRECEIVED(1, 998)
@@ -264,6 +266,14 @@ DEF MoveToStartPosition()
    ;ENDFOLD
 END
 
+;FOLD GripperInit
+DEF GripperInit()
+   ; Initialize gripper hardware here
+   RC_SETMSG("Gripper: Initializing...")
+END
+;ENDFOLD (GripperInit)
+
+;FOLD GripperClose
 DEF GripperClose()
    ; Implement gripper closing logic here
    RC_SETMSG("Gripper closing")
@@ -271,7 +281,9 @@ DEF GripperClose()
    ; Example: SetOutput(GripperOpenSignal, FALSE)
    WAIT SEC 0.1 ; Add delay if needed
 END
+;ENDFOLD (GripperClose)
 
+;FOLD GripperOpen
 DEF GripperOpen(targetOpening:IN)
    ; Implement gripper opening logic here, using the targetOpening value
    DECL REAL targetOpening
@@ -287,6 +299,7 @@ DEF GripperOpen(targetOpening:IN)
    ; Example: SetOutput(GripperOpenSignal, TRUE)
    WAIT SEC 0.1 ; Add delay if needed
 END
+;ENDFOLD (GripperOpen)
 
 ; ---- Roboception Functions ----
 ;FOLD ROBOCEPTION_FUNCTIONS

@@ -36,7 +36,7 @@ DEF ItemPick()
    SUCTION_WIDTH = 0.02   ; Matches EKI specification
    ITEM_TYPE[] = "BAG"  ; "BAG" for bags or " " for any other item
    LOAD_CARRIER_ID[] = " " ; Single space to represent empty/none
-   ROI_ID[] = "item_pick_roi"
+   ROI_ID[] = " "
    POSE_FRAME[] = "external"
    
    ; Collision detection parameters - use " " to skip sending
@@ -60,6 +60,8 @@ DEF ItemPick()
       ;ENDFOLD (BASISTECH INI)
    ;ENDFOLD (INI)
    
+   GripperInit()
+   
    INTERRUPT DECL 89 WHEN $flag[998] DO RC_NOTIFYRECEIVED(1, 998)
    INTERRUPT ON 89
    
@@ -67,7 +69,7 @@ DEF ItemPick()
       SPTP XHOME WITH $VEL_AXIS[1] = SVEL_JOINT(ptpSpeedHigh)
    ;ENDFOLD
    
-   GRIPPERBLOW()
+   GripperBlow()
    
    RC_EKI_INIT_OPEN(serviceNameDetect[])
    
@@ -179,42 +181,58 @@ DEF ExecutePickAndPlace(GRASPPOSE:IN, PLACEPOSE:IN, PRE_GRASP_Z_OFFSET:IN, PRE_P
    SLIN GRASPPOSE with $vel = svel_cp(linSpeedSlow, , lDatSlow), $tool = stool2(fDatDefault), $base = sbase(fDatDefault.base_no)
    
    RC_SETMSG("Grasp position reached. Suctioning...")
-   GRIPPERSUCK()
+   GripperSuck()
    
    ; Exit bin - SLOW speed for careful movement out of bin
    SLIN PREGRASPPOSE with $vel = svel_cp(linSpeedSlow, , lDatSlow), $tool = stool2(fDatDefault), $base = sbase(fDatDefault.base_no)
    
-   IF GripperHasVacuumIO THEN
+   IF GripperHasVacuum() THEN
       ; Execute place sequence - HIGH speed transit to place area
       SPTP PREPLACEPOSE with $vel_axis[1] = svel_joint(ptpSpeedHigh), $tool = stool2(fDatDefault), $base = sbase(fDatDefault.base_no), $ipo_mode = sipo_mode(fDatDefault.ipo_frame), $load = sload(fDatDefault.tool_no), $acc_axis[1] = sacc_joint(pDatHigh), $apo = SAPO_PTP(pDatHigh), $gear_jerk[1] = sgear_jerk(pDatHigh), $collmon_tol_pro[1] = use_cm_pro_values(0)
       ; Place item - MEDIUM speed for controlled placement
       SLIN PLACEPOSE with $vel = svel_cp(linSpeedMedium, , lDatMedium), $tool = stool2(fDatDefault), $base = sbase(fDatDefault.base_no)
-      GRIPPERBLOW()
+      GripperBlow()
       ; Return from place - HIGH speed transit movement
       SPTP PREPLACEPOSE with $vel_axis[1] = svel_joint(ptpSpeedHigh), $tool = stool2(fDatDefault), $base = sbase(fDatDefault.base_no), $ipo_mode = sipo_mode(fDatDefault.ipo_frame), $load = sload(fDatDefault.tool_no), $acc_axis[1] = sacc_joint(pDatHigh), $apo = SAPO_PTP(pDatHigh), $gear_jerk[1] = sgear_jerk(pDatHigh), $collmon_tol_pro[1] = use_cm_pro_values(0)
    ELSE
-      RC_SETMSG("No vacuum - moving on...")
-      GRIPPERBLOW()
+      RC_SETMSG("No vacuum detected - skipping placement")
+      GripperBlow()
    ENDIF
 END
 
 ; ---- Helper Functions ----
-;FOLD GRIPPERSUCK
-   DEF GRIPPERSUCK()
-      WAIT SEC 0.0
-      GripperBlowIO = false
-      GripperSuckIO = true
-      WAIT SEC 1.0
-   END
-;ENDFOLD (GRIPPERSUCK)
+;FOLD GripperInit
+DEF GripperInit()
+   ; Initialize gripper hardware here
+   RC_SETMSG("Gripper: Initializing...")
+END
+;ENDFOLD (GripperInit)
 
-;FOLD GRIPPERBLOW
-   DEF GRIPPERBLOW()
-      WAIT SEC 0.0
-      GripperBlowIO = true
-      GripperSuckIO = false
+;FOLD GripperSuck
+   DEF GripperSuck()
+      ; Suction ON (placeholder - implement based on your gripper)
+      RC_SETMSG("Gripper: Suction ON")
+      ; Example: $OUT[1] = TRUE
+      WAIT SEC 0.5
    END
-;ENDFOLD (GRIPPERSUCK)
+;ENDFOLD (GripperSuck)
+
+;FOLD GripperBlow
+   DEF GripperBlow()
+      ; Suction OFF / Blow (placeholder - implement based on your gripper)
+      RC_SETMSG("Gripper: Suction OFF (Blow)")
+      ; Example: $OUT[1] = FALSE
+      WAIT SEC 0.5
+   END
+;ENDFOLD (GripperBlow)
+
+;FOLD GripperHasVacuum
+DEFFCT BOOL GripperHasVacuum()
+   ; Vacuum check (placeholder - implement based on your gripper)
+   ; Example: RETURN $IN[1]
+   RETURN TRUE
+ENDFCT
+;ENDFOLD (GripperHasVacuum)
 
 ; ---- Roboception Functions ----
 ;FOLD ROBOCEPTION_FUNCTIONS

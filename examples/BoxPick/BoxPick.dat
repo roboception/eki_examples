@@ -23,6 +23,11 @@ DEFDAT BoxPick
    ; Detection results
    DECL INT NUMDETECTEDGRASPS
    
+   ; IO Signals
+   SIGNAL GripperSuckIO $OUT[1]
+   SIGNAL GripperBlowIO $OUT[2]
+   SIGNAL GripperHasVacuumIO $IN[1]
+   
    ; Detection parameters for BoxPick
    DECL CHAR ITEM_MODEL_TYPE[32]  ; "RECTANGLE" or "TEXTURED_BOX" (uppercase!)
    DECL CHAR POSE_FRAME[32]

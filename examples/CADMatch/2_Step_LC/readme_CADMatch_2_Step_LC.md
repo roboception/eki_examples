@@ -37,8 +37,8 @@ serviceNameDetect[] = "rc_cadmatch-detect_object"
 ; Configuration parameters
 TEMPLATE_ID[] = "YourTemplateID"              ; Your CAD template ID
 POSE_FRAME[] = "external"                      ; Reference frame
-LC_ID_TEMPLATE[] = "your_lc_model" ; LC to detect in step 1
-LC_ID_EXACT[] = "lc_exact"          ; LC ID to save with exact pose
+LC_TEMPLATE_ID[] = "your_lc_model" ; LC to detect in step 1
+LC_EXACT_ID[] = "lc_exact"          ; LC ID to save with exact pose
 ```
 
 ### 2. Teach Robot Positions
@@ -51,10 +51,10 @@ Before running the program, create **TWO** load carriers in the rc_cube database
 **Via Web UI (Recommended):**
 1. Navigate to: Database → Load Carriers
 2. Create first load carrier:
-   - ID: `lc_generic` (or your choice for `LC_ID_TEMPLATE`)
+   - ID: `lc_generic` (or your choice for `LC_TEMPLATE_ID`)
    - Enter approximate dimensions of your physical carrier
 3. Create second load carrier:
-   - ID: `lc_exact` (or your choice for `LC_ID_EXACT`)
+   - ID: `lc_exact` (or your choice for `LC_EXACT_ID`)
    - Use the **same dimensions** as the first carrier
    - This one will be automatically updated by the program with the exact detected pose
 
