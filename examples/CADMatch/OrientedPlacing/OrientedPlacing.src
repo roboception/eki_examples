@@ -1,0 +1,633 @@
+&ACCESS RVP
+&PARAM EDITMASK = *
+DEF OrientedPlacing()
+   ;------------------------------------------------------------------------
+   ; CADMatch Oriented Placing Example for Roboception rc_visard/rc_cube
+   ;
+   ; This program picks objects from a bin and places them on a stack, all in
+   ; the SAME object orientation, no matter how they were lying in the bin.
+   ;
+   ; IMPORTANT SETUP INSTRUCTIONS:
+   ; 1. Requires the rc_cadmatch-detect_object_extended service (newer rc_cube
+   ;    firmware). Only this service returns the match (object) pose per grasp.
+   ; 2. The service names MUST match exactly with your EKI XML configuration files
+   ; 3. Modify only the parameters in this section before running the program
+   ; 4. Teach STARTPOSE and OVER_BIN_POSE, and set F_STACK_START_POSE and
+   ;    F_STACK_OFFSET in the .dat file
+   ; 5. Define the GripperClose() and GripperOpen() functions for your specific gripper
+   ;
+   ; HOW THE PROGRAM WORKS:
+   ; - F_STACK_START_POSE is the pose of the OBJECT (not the gripper) for the
+   ;   first stack place. Each further object is placed F_STACK_OFFSET further.
+   ; - For each detected grasp the program computes the object pose in the
+   ;   gripper (match-in-hand) and from it the gripper pose that puts the
+   ;   object exactly onto the next stack pose.
+   ; - INVERSE() checks whether the robot can reach that gripper pose. The pick
+   ;   axis configuration is used as reference, so the robot does not flip.
+   ; - The first grasp with a reachable stack pose is picked and placed.
+   ; - If no grasp allows a reachable stack pose, the object of the first grasp
+   ;   is dropped at OVER_BIN_POSE instead (e.g. into a rework bin).
+   ; - The loop ends when no more objects are detected or MAX_STACK_ITEMS is reached.
+   ;------------------------------------------------------------------------
+   DECL INT MAX_DETECTION_RETRIES
+   DECL INT RETRY_COUNT
+   DECL INT j
+   DECL BOOL bFoundReachable
+   DECL INT ERR_STAT
+   DECL E6AXIS AXIS_PICK
+   DECL E6AXIS AXIS_PLACE
+   DECL FRAME F_TARGET_MATCH_POSE
+   DECL FRAME F_TARGET_GRASP_POSE
+   DECL FRAME F_MATCH_IN_HAND
+   DECL CHAR tempMsg[120]       ; Temporary buffer for constructing messages
+   DECL STATE_T State           ; State variable for SWRITE
+   DECL INT Offset              ; Offset variable for SWRITE
+
+   ; Service name - same as the EKI service name
+   ; TODO: Change this to the correct service name - could be "sensor_a_pipeline_1_rc_cadmatch-detect_object_extended"
+   serviceNameDetect[] = "rc_cadmatch-detect_object_extended"
+   serviceNameStart[] = "rc_cadmatch-start"
+   serviceNameStop[] = "rc_cadmatch-stop"
+
+   ; Detection configuration parameters
+   TEMPLATE_ID[] = "template_name"         ; CAD template to match
+   POSE_FRAME[] = "external"               ; Reference frame for poses
+   LOAD_CARRIER_ID[] = " "                 ; Load carrier ID (Whitespace " " = none)
+   ROI_ID[] = " "                          ; Region of interest ID
+
+   ; Collision checking parameters - deactivate all to disable collision checking
+   GRIPPER_ID[] = " "                      ; Gripper ID for collision checking
+   ; Pre-grasp offset for collision checking (in meters) - negative values normally desired
+   PRE_GRASP_OFFSET_X = 0.0                 ; X offset - set to 0 to disable
+   PRE_GRASP_OFFSET_Y = 0.0                 ; Y offset - set to 0 to disable
+   PRE_GRASP_OFFSET_Z = -0.2                ; Z offset - set to 0 to disable
+
+   ; Motion parameters (in millimeters)
+   MOT_PRE_GRASP_Z_OFFSET = -200        ; Offset along the gripper Z axis for the pre-grasp position
+   MOT_PRE_PLACE_Z_OFFSET = 100         ; Height above the place position (base Z) for the pre-place position
+
+   ; Detection retry configuration
+   MAX_DETECTION_RETRIES = 3        ; Maximum number of detection attempts
+
+   ; Gripper configuration
+   defaultOpening = 30.0           ; Set your default gripper opening here
+
+   ; Initialize robot and set up interrupts
+   ;FOLD INI
+      ;FOLD BASISTECH INI
+         GLOBAL INTERRUPT DECL 3 WHEN $STOPMESS==TRUE DO IR_STOPM()
+         INTERRUPT ON 3
+         BAS(#INITMOV,0)
+      ;ENDFOLD (BASISTECH INI)
+   ;ENDFOLD (INI)
+
+   GripperInit()
+
+   ; Initialize message received interrupt for EKI communication
+   INTERRUPT DECL 89 WHEN $FLAG[998] DO RC_NOTIFYRECEIVED(1, 998)
+   INTERRUPT ON 89
+
+   ; Move robot to home position and open gripper
+   GripperOpen(defaultOpening)
+   MoveToStartPosition()
+
+   ; Initialize and open all EKI services once at program start
+   RC_EKI_INIT_OPEN(serviceNameStart[])
+   RC_EKI_INIT_OPEN(serviceNameStop[])
+   RC_EKI_INIT_OPEN(serviceNameDetect[])
+
+   RC_START(serviceNameStart[])
+
+   STACK_COUNT = 0
+
+   ; Main detection and pick-and-place loop
+   LOOP
+      ResetDetectedGrasps()
+
+      ; Attempt detection with retries
+      FOR RETRY_COUNT = 1 TO MAX_DETECTION_RETRIES
+         PerformDetection(serviceNameDetect[], TEMPLATE_ID[], POSE_FRAME[], LOAD_CARRIER_ID[], ROI_ID[], GRIPPER_ID[], PRE_GRASP_OFFSET_X, PRE_GRASP_OFFSET_Y, PRE_GRASP_OFFSET_Z)
+
+         IF DetectionSuccessful() THEN
+            EXIT
+         ENDIF
+
+         IF RETRY_COUNT < MAX_DETECTION_RETRIES THEN
+            Offset = 0 ; Reset SWRITE offset
+            SWRITE(tempMsg[], State, Offset, "Detection failed (Attempt %d/%d): %s Retrying...", RETRY_COUNT, MAX_DETECTION_RETRIES, RETURNCODE.MSG[])
+            RC_SETMSG(tempMsg[])
+            WAIT SEC 1.0  ; Brief delay between retries
+         ENDIF
+      ENDFOR
+
+      IF NOT DetectionSuccessful() THEN
+         HandleDetectionFailure()
+         EXIT  ; Exit main loop if detection fails after all retries
+      ENDIF
+
+      ; Object pose for the next stack place
+      F_TARGET_MATCH_POSE = F_STACK_START_POSE
+      F_TARGET_MATCH_POSE.X = F_STACK_START_POSE.X + (STACK_COUNT * F_STACK_OFFSET.X)
+      F_TARGET_MATCH_POSE.Y = F_STACK_START_POSE.Y + (STACK_COUNT * F_STACK_OFFSET.Y)
+      F_TARGET_MATCH_POSE.Z = F_STACK_START_POSE.Z + (STACK_COUNT * F_STACK_OFFSET.Z)
+
+      ; Find the first grasp that allows a reachable stack place
+      bFoundReachable = FALSE
+      FOR j = 1 TO NUMDETECTEDGRASPS
+         IF j > MAX_GRASP_CHECKS THEN
+            EXIT
+         ENDIF
+
+         ; Axis configuration at the pick, used as reference for the place
+         ERR_STAT = 0
+         AXIS_PICK = INVERSE(DETECTEDGRASPS[j], $AXIS_ACT, ERR_STAT)
+
+         IF ERR_STAT == 0 THEN
+            ; Object pose relative to the gripper for this grasp, and the
+            ; gripper pose that puts the object onto the stack pose
+            F_MATCH_IN_HAND = INV_POS(DETECTEDGRASPS[j]) : DETECTEDMATCHES[j]
+            F_TARGET_GRASP_POSE = F_TARGET_MATCH_POSE : INV_POS(F_MATCH_IN_HAND)
+
+            IF IsPoseReachable(F_TARGET_GRASP_POSE, AXIS_PLACE, AXIS_PICK) THEN
+               Offset = 0
+               SWRITE(tempMsg[], State, Offset, "Grasp %d: placing on stack (item %d)", j, STACK_COUNT + 1)
+               RC_SETMSG(tempMsg[])
+               ExecutePickAndPlace(DETECTEDGRASPS[j], AXIS_PLACE, MOT_PRE_GRASP_Z_OFFSET, MOT_PRE_PLACE_Z_OFFSET, defaultOpening)
+               STACK_COUNT = STACK_COUNT + 1
+               bFoundReachable = TRUE
+               EXIT
+            ENDIF
+         ENDIF
+      ENDFOR
+
+      ; Fallback: no grasp allows the stack orientation, drop the object
+      IF NOT bFoundReachable THEN
+         RC_SETMSG("Stack pose not reachable with any grasp - dropping object")
+         PickAndDrop(DETECTEDGRASPS[1], OVER_BIN_POSE, MOT_PRE_GRASP_Z_OFFSET, defaultOpening)
+      ENDIF
+
+      IF (MAX_STACK_ITEMS > 0) AND (STACK_COUNT >= MAX_STACK_ITEMS) THEN
+         RC_SETMSG("Stack is full")
+         EXIT
+      ENDIF
+   ENDLOOP
+
+   ; Clean up and stop the services once at program end
+   MoveToStartPosition()
+   RC_STOP(serviceNameStop[])
+   RC_EKI_CLOSE_CLEAR(serviceNameDetect[])
+   RC_EKI_CLOSE_CLEAR(serviceNameStart[])
+   RC_EKI_CLOSE_CLEAR(serviceNameStop[])
+END
+
+DEF ExecutePickAndPlace(GRASPPOSE:IN, PLACEAXIS:IN, MOT_PRE_GRASP_Z_OFFSET:IN, MOT_PRE_PLACE_Z_OFFSET:IN, targetOpening:IN)
+   ; Picks the object and places it with the precomputed axis configuration
+   ;
+   ; @param GRASPPOSE: Target pose for grasping the object
+   ; @param PLACEAXIS: Axis configuration of the place pose (from IsPoseReachable)
+   ; @param MOT_PRE_GRASP_Z_OFFSET: Offset (mm) along the gripper Z axis for the pre-grasp position
+   ; @param MOT_PRE_PLACE_Z_OFFSET: Height (mm) above the place pose for the pre-place position
+   ; @param targetOpening: Gripper opening for release
+
+   DECL FRAME GRASPPOSE
+   DECL E6AXIS PLACEAXIS
+   DECL REAL MOT_PRE_GRASP_Z_OFFSET, MOT_PRE_PLACE_Z_OFFSET
+   DECL REAL targetOpening
+
+   ; Internal pose calculations
+   DECL FRAME PREGRASPPOSE
+   DECL E6POS PLACEPOSE, PREPLACEPOSE
+   DECL FRAME F_OFFSET
+   DECL INT ERR_STAT
+
+   ; Calculate pre-grasp pose using frame offset
+   F_OFFSET = $NULLFRAME
+   F_OFFSET.Z = MOT_PRE_GRASP_Z_OFFSET
+   PREGRASPPOSE = GRASPPOSE:F_OFFSET
+
+   ; Calculate pre-place pose above the place pose
+   ERR_STAT = 0
+   PLACEPOSE = FORWARD(PLACEAXIS, ERR_STAT)
+   PREPLACEPOSE = PLACEPOSE
+   PREPLACEPOSE.Z = PLACEPOSE.Z + MOT_PRE_PLACE_Z_OFFSET
+
+   ; Move to pre-grasp position
+   SPTP PREGRASPPOSE WITH $VEL_AXIS[1] = SVEL_JOINT(rptpVelocityStd), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO), $IPO_MODE = SIPO_MODE(fDatDefault.IPO_FRAME), $LOAD = SLOAD(fDatDefault.TOOL_NO), $ACC_AXIS[1] = SACC_JOINT(pDatDefault), $APO = SAPO_PTP(pDatDefault), $GEAR_JERK[1] = SGEAR_JERK(pDatDefault)
+
+   ; Move to grasp position
+   SLIN GRASPPOSE WITH $VEL = SVEL_CP(rlinVelocitySlow, , lDatDefault), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO)
+
+   ; Activate gripper
+   GripperClose()
+
+   ; Add a small wait if needed for gripper to physically close
+   WAIT SEC 0.5 ; Adjust timing as needed
+
+   ; Optional: Add grasp check logic here if available for your gripper
+
+   ; Move back to pre-grasp position
+   SLIN PREGRASPPOSE WITH $VEL = SVEL_CP(rlinVelocityStd, , lDatDefault), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO)
+
+   ; Move to pre-place position
+   SPTP PREPLACEPOSE WITH $VEL_AXIS[1] = SVEL_JOINT(rptpVelocityStd), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO), $IPO_MODE = SIPO_MODE(fDatDefault.IPO_FRAME), $LOAD = SLOAD(fDatDefault.TOOL_NO), $ACC_AXIS[1] = SACC_JOINT(pDatDefault), $APO = SAPO_PTP(pDatDefault), $GEAR_JERK[1] = SGEAR_JERK(pDatDefault)
+
+   ; Move down to place position
+   SLIN PLACEPOSE WITH $VEL = SVEL_CP(rlinVelocitySlow, , lDatDefault), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO)
+
+   ; Release object
+   GripperOpen(targetOpening)
+
+   ; Add a small wait if needed for gripper to physically open
+   WAIT SEC 0.5 ; Adjust timing as needed
+
+   ; Move back to pre-place position
+   SLIN PREPLACEPOSE WITH $VEL = SVEL_CP(rlinVelocityStd, , lDatDefault), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO)
+
+   ; Return to home position
+   MoveToStartPosition()
+END
+
+DEF PickAndDrop(GRASPPOSE:IN, DROPPOSE:IN, MOT_PRE_GRASP_Z_OFFSET:IN, targetOpening:IN)
+   ; Picks the object and drops it at a taught pose, without oriented placing
+   ;
+   ; @param GRASPPOSE: Target pose for grasping the object
+   ; @param DROPPOSE: Taught pose where the object is released
+   ; @param MOT_PRE_GRASP_Z_OFFSET: Offset (mm) along the gripper Z axis for the pre-grasp position
+   ; @param targetOpening: Gripper opening for release
+
+   DECL FRAME GRASPPOSE
+   DECL E6POS DROPPOSE
+   DECL REAL MOT_PRE_GRASP_Z_OFFSET
+   DECL REAL targetOpening
+
+   ; Internal pose calculations
+   DECL FRAME PREGRASPPOSE
+   DECL FRAME F_OFFSET
+
+   ; Calculate pre-grasp pose using frame offset
+   F_OFFSET = $NULLFRAME
+   F_OFFSET.Z = MOT_PRE_GRASP_Z_OFFSET
+   PREGRASPPOSE = GRASPPOSE:F_OFFSET
+
+   ; Move to pre-grasp position
+   SPTP PREGRASPPOSE WITH $VEL_AXIS[1] = SVEL_JOINT(rptpVelocityStd), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO), $IPO_MODE = SIPO_MODE(fDatDefault.IPO_FRAME), $LOAD = SLOAD(fDatDefault.TOOL_NO), $ACC_AXIS[1] = SACC_JOINT(pDatDefault), $APO = SAPO_PTP(pDatDefault), $GEAR_JERK[1] = SGEAR_JERK(pDatDefault)
+
+   ; Move to grasp position
+   SLIN GRASPPOSE WITH $VEL = SVEL_CP(rlinVelocitySlow, , lDatDefault), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO)
+
+   ; Activate gripper
+   GripperClose()
+   WAIT SEC 0.5 ; Adjust timing as needed
+
+   ; Move back to pre-grasp position
+   SLIN PREGRASPPOSE WITH $VEL = SVEL_CP(rlinVelocityStd, , lDatDefault), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO)
+
+   ; Move to drop position and release
+   SPTP DROPPOSE WITH $VEL_AXIS[1] = SVEL_JOINT(rptpVelocityStd), $TOOL = STOOL2(fDatDefault), $BASE = SBASE(fDatDefault.BASE_NO), $IPO_MODE = SIPO_MODE(fDatDefault.IPO_FRAME), $LOAD = SLOAD(fDatDefault.TOOL_NO), $ACC_AXIS[1] = SACC_JOINT(pDatDefault), $APO = SAPO_PTP(pDatDefault), $GEAR_JERK[1] = SGEAR_JERK(pDatDefault)
+   GripperOpen(targetOpening)
+   WAIT SEC 0.5 ; Adjust timing as needed
+
+   ; Return to home position
+   MoveToStartPosition()
+END
+
+; ---- Helper Functions ----
+DEF MoveToStartPosition()
+   ;FOLD SPTP STARTPOSE Vel=100 % DEFAULT
+      SPTP STARTPOSE WITH $VEL_AXIS[1]= SVEL_JOINT(100), $TOOL= STOOL2(fDatDefault), $BASE= SBASE(fDatDefault.BASE_NO), $IPO_MODE= SIPO_MODE(fDatDefault.IPO_FRAME), $LOAD= SLOAD(fDatDefault.TOOL_NO), $ACC_AXIS[1]= SACC_JOINT(PDEFAULT), $GEAR_JERK[1]= SGEAR_JERK(PDEFAULT)
+   ;ENDFOLD
+END
+
+DEFFCT BOOL IsPoseReachable(TargetPose:IN, ResultAxis:OUT, ReferenceAxis:IN)
+   ; Checks with INVERSE() whether the robot can reach TargetPose
+   ;
+   ; @param TargetPose: Gripper pose to check
+   ; @param ResultAxis: Axis configuration for TargetPose (valid if TRUE is returned)
+   ; @param ReferenceAxis: Start configuration, keeps the solution close to it
+   DECL FRAME TargetPose
+   DECL E6AXIS ResultAxis
+   DECL E6AXIS ReferenceAxis
+   DECL INT ERR_STAT
+
+   ERR_STAT = 0
+   ResultAxis = INVERSE(TargetPose, ReferenceAxis, ERR_STAT)
+
+   IF ERR_STAT == 0 THEN
+      RETURN TRUE
+   ENDIF
+   RETURN FALSE
+ENDFCT
+
+;FOLD GripperInit
+DEF GripperInit()
+   ; Initialize gripper hardware here
+   RC_SETMSG("Gripper: Initializing...")
+END
+;ENDFOLD (GripperInit)
+
+;FOLD GripperClose
+DEF GripperClose()
+   ; Implement gripper closing logic here
+   RC_SETMSG("Gripper closing")
+   ; Example: SetOutput(GripperCloseSignal, TRUE)
+   ; Example: SetOutput(GripperOpenSignal, FALSE)
+   WAIT SEC 0.1 ; Add delay if needed
+END
+;ENDFOLD (GripperClose)
+
+;FOLD GripperOpen
+DEF GripperOpen(targetOpening:IN)
+   ; Implement gripper opening logic here, using the targetOpening value
+   DECL REAL targetOpening
+   DECL KrlMsgPar_T params[1]
+
+   ; Setup parameter for message
+   params[1] = {par_type #VALUE, par_real 0}
+   params[1].par_real = targetOpening
+
+   RC_SETMSG_PARAM("Gripper opening to %1", params[])
+   ; Example: SetAnalogOutput(GripperPositionSignal, targetOpening)
+   ; Example: SetOutput(GripperCloseSignal, FALSE)
+   ; Example: SetOutput(GripperOpenSignal, TRUE)
+   WAIT SEC 0.1 ; Add delay if needed
+END
+;ENDFOLD (GripperOpen)
+
+; ---- Roboception Functions ----
+;FOLD ROBOCEPTION_FUNCTIONS
+   DEF PerformDetection(serviceNameDetect[]:IN, TEMPLATE_ID[]:IN, POSE_FRAME[]:IN, LOAD_CARRIER_ID[]:IN, ROI_ID[]:IN, GRIPPER_ID[]:IN, PRE_GRASP_OFFSET_X:IN, PRE_GRASP_OFFSET_Y:IN, PRE_GRASP_OFFSET_Z:IN)
+      DECL CHAR serviceNameDetect[]
+      DECL EKI_STATUS RET
+      DECL CHAR TEMPLATE_ID[]
+      DECL CHAR POSE_FRAME[]
+      DECL CHAR LOAD_CARRIER_ID[]
+      DECL CHAR ROI_ID[]
+      DECL CHAR GRIPPER_ID[]
+      DECL REAL PRE_GRASP_OFFSET_X
+      DECL REAL PRE_GRASP_OFFSET_Y
+      DECL REAL PRE_GRASP_OFFSET_Z
+      DECL E6POS flangePose
+      
+      flangePose = $POS_ACT_MES : INV_POS($TOOL)
+      
+      RET = EKI_SetString(serviceNameDetect[], "req/args/template_id", TEMPLATE_ID[])
+      RET = EKI_SetString(serviceNameDetect[], "req/args/pose_frame", POSE_FRAME[])
+      RET = EKI_SetFrame(serviceNameDetect[], "req/args/robot_pose", flangePose)
+      
+      IF LOAD_CARRIER_ID[1] <> " " THEN
+         RET = EKI_SetString(serviceNameDetect[], "req/args/load_carrier_id", LOAD_CARRIER_ID[])
+      ENDIF
+      
+      IF ROI_ID[1] <> " " THEN
+         RET = EKI_SetString(serviceNameDetect[], "req/args/region_of_interest_id", ROI_ID[])
+      ENDIF
+      
+      IF GRIPPER_ID[1] <> " " THEN
+         RET = EKI_SetString(serviceNameDetect[], "req/args/collision_detection/@gripper_id", GRIPPER_ID[])
+      ENDIF
+      
+      IF PRE_GRASP_OFFSET_X <> 0.0 THEN
+         RET = EKI_SetReal(serviceNameDetect[], "req/args/collision_detection/pre_grasp_offset/@x", PRE_GRASP_OFFSET_X)
+      ENDIF
+      
+      IF PRE_GRASP_OFFSET_Y <> 0.0 THEN
+         RET = EKI_SetReal(serviceNameDetect[], "req/args/collision_detection/pre_grasp_offset/@y", PRE_GRASP_OFFSET_Y)
+      ENDIF
+      
+      IF PRE_GRASP_OFFSET_Z <> 0.0 THEN
+         RET = EKI_SetReal(serviceNameDetect[], "req/args/collision_detection/pre_grasp_offset/@z", PRE_GRASP_OFFSET_Z)
+      ENDIF
+      
+      ; Send request
+      RET = EKI_Send(serviceNameDetect[], "req")
+      
+      ; Wait for response
+      RC_WAITFORRESULT(1)
+      
+      ; Read results
+      RC_READRESULT(serviceNameDetect[])
+      
+      RET = EKI_ClearBuffer(serviceNameDetect[], "req")
+   END
+   
+   DEFFCT BOOL DetectionSuccessful()
+      DECL KrlMsgPar_T params[1]
+      
+      IF (RETURNCODE.VALUE < 0) THEN
+         RETURN FALSE
+      ENDIF
+      
+      IF CheckDetectedItem(1) THEN
+         ; Show number of detected grasps
+         params[1] = {par_type #VALUE, par_real 0}
+         params[1].par_real = NUMDETECTEDGRASPS
+         RC_SETMSG_PARAM("%1 grasps detected", params[])
+         RETURN TRUE
+      ENDIF
+      
+      RETURN FALSE
+   ENDFCT
+   
+   DEFFCT BOOL CheckDetectedItem(Index:IN)
+      DECL INT Index
+      DECL KrlMsgPar_T par[3]
+      
+      IF (DETECTEDGRASPS[Index].X == 0) AND (DETECTEDGRASPS[Index].Y == 0) AND (DETECTEDGRASPS[Index].Z == 0) AND (DETECTEDGRASPS[Index].A == 0) AND (DETECTEDGRASPS[Index].B == 0) AND (DETECTEDGRASPS[Index].C ==0) THEN
+         RETURN FALSE
+      ELSE
+         ;Show cad match pose
+         par[1] = {par_type #value, par_real 0}
+         par[1].par_real = DETECTEDGRASPS[1].X
+         par[2] = {par_type #value, par_real 0}
+         par[2].par_real = DETECTEDGRASPS[1].Y
+         par[3] = {par_type #value, par_real 0}
+         par[3].par_real = DETECTEDGRASPS[1].Z
+         RC_SETMSG_PARAM("Grasp pose: X: %1, Y: %2, Z: %3", par[])
+         RETURN TRUE
+      ENDIF
+   ENDFCT
+   
+   DEF HandleDetectionFailure()
+      IF (RETURNCODE.VALUE > 0) THEN
+         RC_SETMSG("No CADMatch result")
+      ENDIF
+      HALT
+   END
+   
+   DEF RC_SETMSG(msg[]:IN)
+      DECL CHAR msg[]
+      DECL KrlMsgPar_T params[3]
+      
+      RC_SETMSG_PARAM(msg[], params[])
+   END
+   
+   DEF RC_SETMSG_PARAM(msg[]:IN, params:OUT)
+      DECL CHAR msg[]
+      DECL KrlMsgPar_T params[]
+      
+      DECL KrlMsg_T name
+      DECL KrlMsgOpt_T options
+      DECL INT Handle, len, count
+      DECL EKrlMsgType Type
+      
+      name={modul[] "rc", nr 1, msg_txt[] " "}
+      
+      Type=#notify
+      
+      len=STRLEN(msg[])
+      IF len>0 THEN
+         IF len>80 THEN
+            len=80
+         ENDIF
+         FOR count=1 TO len
+            name.msg_txt[count]=msg[count]
+         ENDFOR
+      ELSE
+         name.msg_txt[]="parameter msg[] is missing"
+      ENDIF
+      
+      Handle=Set_KrlMsg(Type, name, params[], options)
+   END
+   
+   DEF RC_EKI_INIT_OPEN(configFileName[]:IN)
+      DECL CHAR configFileName[]
+      DECL EKI_Status RET
+      DECL CHAR msg[120]
+      DECL STATE_T State
+      DECL INT Offset
+      
+      RET = EKI_Init(configFileName[])
+      WAIT SEC 0
+      RET = EKI_Open(configFileName[])
+      WAIT SEC 0
+      EKI_CHECK(RET,#Quit)
+      Offset = 0
+      SWRITE(msg[], State, Offset, "%s initialized and opened", configFileName[])
+      RC_SETMSG(msg[])
+   END
+      
+   DEF RC_EKI_CLOSE_CLEAR(configFileName[]:IN)
+      DECL CHAR configFileName[]
+      DECL EKI_Status RET
+      DECL CHAR msg[120]
+      DECL STATE_T State
+      DECL INT Offset
+      
+      RET = EKI_Close(configFileName[])
+      WAIT SEC 0
+      RET = EKI_Clear(configFileName[])
+      WAIT SEC 0
+      Offset = 0
+      SWRITE(msg[], State, Offset, "%s closed and cleared", configFileName[])
+      RC_SETMSG(msg[])
+   END
+   
+   DEF RC_WAITFORRESULT(WaitFlag:IN)
+      DECL INT WaitFlag
+      
+      WAIT FOR $FLAG[WaitFlag] OR NOT $FLAG[RCEkiAliveFlagNo]
+      ;Eki-connection has been closed
+      IF(NOT $FLAG[RCEkiAliveFlagNo]) THEN
+         RC_SETMSG("EKI connection lost")
+      ENDIF
+      
+      $FLAG[WaitFlag] = FALSE
+      WAIT SEC 0
+   END
+   
+   DEF RC_NOTIFYRECEIVED(WAITFLAG:IN, EOFRESULFLAG:IN)
+      DECL INT WAITFLAG
+      DECL INT EOFRESULFLAG
+      
+      $FLAG[EOFRESULFLAG]=FALSE
+      $FLAG[WAITFLAG]=TRUE
+   END
+   
+   DEF RC_READRESULT(configFileName[]:IN)
+      DECL CHAR configFileName[]
+      DECL RETURNCODE_T RESULT
+      DECL EKI_STATUS RET
+      DECL INT j
+      DECL FRAME POSE
+      
+      POSE = POSE_IDENT
+      RESULT={VALUE 0, MSG[] "0"}
+      RECEIVED_GRIPPER_ID[] = "none"
+      RECEIVED_GRASP_ID[] = "none" ; Initialize grasp ID
+      
+      ;Receive error codes
+      RET = EKI_GetInt(configFileName[], "res/return_code/@value", RESULT.VALUE)
+      RET = EKI_GetString(configFileName[], "res/return_code/@message", RESULT.MSG[])
+      RETURNCODE = RESULT
+      
+      ; Display error message immediately if there is one
+      IF (RESULT.VALUE < 0) THEN
+         RC_SETMSG("API Error")
+         RC_SETMSG(RESULT.MSG[])
+      ENDIF
+      
+      ;Receive number of detections
+      RET = EKI_CheckBuffer(configFileName[], "res/grasps/le/id")
+      NUMDETECTEDGRASPS = RET.Buff
+      
+      ;Receive frames
+      FOR j=1 to NUMDETECTEDGRASPS
+         RET = EKI_GetFrame(configFileName[], "res/grasps/le/pose", POSE)
+         DETECTEDGRASPS[j] = POSE
+         ; Object pose of the match this grasp belongs to
+         RET = EKI_GetFrame(configFileName[], "res/grasps/le/match/pose", POSE)
+         DETECTEDMATCHES[j] = POSE
+         ; For the first grasp (j=1), also read its gripper_id and grasp_id
+         IF j == 1 THEN
+            ; Read the gripper_id associated with the first grasp (optional)
+            RET = EKI_CheckBuffer(configFileName[], "res/grasps/le/gripper_id")
+            IF RET.Buff > 0 THEN
+               RET = EKI_GetString(configFileName[], "res/grasps/le/gripper_id", RECEIVED_GRIPPER_ID[])
+            ELSE
+               RECEIVED_GRIPPER_ID[] = "none"
+            ENDIF
+            ; Read the id (grasp_id) associated with the first grasp (optional)
+            RET = EKI_CheckBuffer(configFileName[], "res/grasps/le/id")
+            IF RET.Buff > 0 THEN
+               RET = EKI_GetString(configFileName[], "res/grasps/le/id", RECEIVED_GRASP_ID[])
+            ELSE
+               RECEIVED_GRASP_ID[] = "none"
+            ENDIF
+         ENDIF
+      ENDFOR
+      RET = EKI_ClearBuffer(configFileName[], "res")
+   END
+   
+   DEF RC_START(serviceNameStart[]:IN)
+      DECL CHAR serviceNameStart[]
+      DECL EKI_Status RET
+      
+      $FLAG[1] = FALSE
+      RC_SETMSG("Start")
+      RET = EKI_Send(serviceNameStart[], "req")
+      RC_WAITFORRESULT(1)
+      RET = EKI_ClearBuffer(serviceNameStart[], "res")
+      RET = EKI_ClearBuffer(serviceNameStart[], "req")
+   END
+   
+   DEF RC_STOP(serviceNameStop[]:IN)
+      DECL CHAR serviceNameStop[]
+      DECL EKI_Status RET
+      
+      $FLAG[1] = FALSE
+      RC_SETMSG("Stop")
+      RET = EKI_Send(serviceNameStop[], "req")
+      RC_WAITFORRESULT(1)
+      RET = EKI_ClearBuffer(serviceNameStop[], "res")
+      RET = EKI_ClearBuffer(serviceNameStop[], "req")
+   END
+   
+   DEF ResetDetectedGrasps()
+      DECL INT I
+      
+      FOR I = 1 TO 32 STEP 1
+         DETECTEDGRASPS[I]=$NULLFRAME
+         DETECTEDMATCHES[I]=$NULLFRAME
+      ENDFOR
+   END
+;ENDFOLD (ROBOCEPTION_FUNCTIONS)
