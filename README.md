@@ -7,9 +7,17 @@ These examples are based on KUKA's EthernetKRL technology package. Official docu
 
 ## Example Applications
 
-* **CADMatch**: Demonstrates CAD-based object detection and pick-and-place operations
+* **CADMatch**: CAD-based object detection
+  * **Basic**: Detection and pick-and-place operations
+  * **2_Step_LC**: Detects the load carrier first, then runs CADMatch with the exact load carrier pose
+  * **OrientedPlacing**: Places all objects on a stack in the same orientation, independent of the grasp used
+  * **TeachGrasps**: Teaches grasp poses on a CADMatch template with the robot and gripper
 * **ItemPick**: Demonstrates continuous bin-picking for bags. Program loops until bin is empty, detecting items and trying available grasp poses for each detection
+* **BoxPick**: Bin-picking of rectangular items with a suction gripper
+* **LoadCarrier**: Load carrier detection
 * **HandEyeCalibration**: Performs an 8-pose calibration routine to align camera and robot coordinate systems
+* **EstimateRobotPose**: Estimates and compensates the robot positioning error using AprilTags
+* **SystemAccuracyTest**: Tests the positioning accuracy of robot and camera using AprilTags
 * **AprilTag**: Implements AprilTag detection and robot positioning
 * **Measure**: Demonstrates depth measurement and region analysis capabilities
 

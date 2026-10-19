@@ -63,7 +63,7 @@ DEF CADMatch()
    
    ; Motion parameters (in millimeters)
    MOT_PRE_GRASP_Z_OFFSET = -300        ; Vertical offset for pre-grasp position
-   MOT_PRE_PLACE_Z_OFFSET = -300        ; Vertical offset for pre-place position
+   MOT_PRE_PLACE_Z_OFFSET = 300         ; Height (mm) above PLACEPOSE (base Z) for the pre-place position
    
    ; Detection retry configuration
    MAX_DETECTION_RETRIES = 3        ; Maximum number of detection attempts
